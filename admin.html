@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Eden Tree Ltd. — Admin Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%234a8c1a'/><text y='70' x='50' text-anchor='middle' font-size='60' fill='white'>🌿</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- Login Overlay -->
+  <div class="admin-login-overlay" id="login-overlay">
+    <div class="admin-login-card">
+      <div class="admin-login-logo">
+        <div class="navbar-logo-icon"><img src="images/eden.jpg" alt="Eden Tree"></div>
+      </div>
+      <h2 style="font-size:22px;margin-bottom:4px">Admin Login</h2>
+      <p style="font-size:13px;color:var(--gray-400);margin-bottom:28px">Enter the admin password to access the dashboard</p>
+      <form id="login-form" style="width:100%">
+        <input type="password" id="login-password" placeholder="Password" style="width:100%;padding:12px 16px;border:1px solid var(--gray-200);border-radius:10px;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:12px" autofocus>
+        <div id="login-error" style="color:#dc2626;font-size:13px;font-weight:600;margin-bottom:12px;display:none">Invalid credentials</div>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center">Sign In</button>
+      </form>
+    </div>
+  </div>
+  <div class="admin-layout">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="admin-sidebar">
+      <div class="admin-sidebar-header">
+        <a href="index.html" class="navbar-logo">
+          <div class="navbar-logo-icon"><img src="images/eden.jpg" alt="Eden Tree"></div>
+          <div class="navbar-brand"><h1 style="font-size:17px">Eden Tree</h1><span style="font-size:8px">Admin Panel</span></div>
+        </a>
+      </div>
+      <nav class="admin-sidebar-nav">
+        <a href="#dashboard" class="admin-nav-item active" data-view="dashboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z"/></svg>
+          Dashboard
+        </a>
+        <a href="#orders" class="admin-nav-item" data-view="orders">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 012.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z"/></svg>
+          Orders
+        </a>
+        <a href="#products" class="admin-nav-item" data-view="products">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"/></svg>
+          Products
+        </a>
+        <a href="#messages" class="admin-nav-item" data-view="messages">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+          Messages
+        </a>
+        <a href="#subscribers" class="admin-nav-item" data-view="subscribers">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75"/></svg>
+          Subscribers
+        </a>
+      </nav>
+      <div class="admin-sidebar-footer">
+        <a href="index.html" class="admin-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/></svg>
+          Back to Site
+        </a>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="admin-main">
+      <header class="admin-header">
+        <div class="admin-header-left">
+          <button id="sidebar-toggle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path stroke-linecap="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg></button>
+        </div>
+        <div class="admin-user">
+          <div class="admin-user-info">
+            <div class="name">Admin</div>
+            <div class="role">edentreegh.com</div>
+          </div>
+          <div class="admin-avatar">ET</div>
+          <button id="logout-btn" style="background:none;border:none;cursor:pointer;padding:6px;color:var(--gray-400);display:flex" title="Logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9"/></svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="admin-content">
+        <!-- Dashboard View -->
+        <div id="view-dashboard" class="admin-view">
+          <!-- Filled by admin.js -->
+        </div>
+        
+        <!-- Orders View -->
+        <div id="view-orders" class="admin-view" style="display:none">
+          <!-- Filled by admin.js -->
+        </div>
+
+        <!-- Products View -->
+        <div id="view-products" class="admin-view" style="display:none">
+          <!-- Filled by admin.js -->
+        </div>
+
+        <!-- Messages View -->
+        <div id="view-messages" class="admin-view" style="display:none">
+          <!-- Filled by admin.js -->
+        </div>
+
+        <!-- Subscribers View -->
+        <div id="view-subscribers" class="admin-view" style="display:none">
+          <!-- Filled by admin.js -->
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Order Detail Modal -->
+  <div class="admin-modal-overlay" id="order-modal">
+    <div class="admin-modal">
+      <div class="admin-modal-header">
+        <h3 id="modal-order-id"></h3>
+        <button class="admin-modal-close" id="modal-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <div class="admin-modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- Product Add/Edit Modal -->
+  <div class="admin-modal-overlay" id="product-modal">
+    <div class="admin-modal">
+      <div class="admin-modal-header">
+        <h3 id="product-modal-title">Add Product</h3>
+        <button class="admin-modal-close" id="product-modal-close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>
+      </div>
+      <div class="admin-modal-body" id="product-modal-body">
+        <!-- Filled by admin.js -->
+      </div>
+    </div>
+  </div>
+
+  <script src="js/admin.js"></script>
+</body>
+</html>

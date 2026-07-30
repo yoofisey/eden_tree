@@ -1,42 +1,31 @@
-import React from 'react';
-
-const NavLinks = [
-  { id: 1, name: 'Home', href: '#' },
-  { id: 2, name: 'About Us', href: '#' },
-  { id: 3, name: 'Locations', href: '#' },
-  { id: 4, name: 'Contact Us', href: '#' },
-];
-
-const Navbar = () => {
-  return (
-    <nav className="bg-white shadow-md">
-      <div className="container mx-auto flex items-center justify-between py-4 px-4">
-        
-        {/* Logo */}
-        <div className="font-heading font-bold text-2xl text-primary">
-          Logo
-        </div>
-
-        {/* Links */}
-        <ul className="flex items-center gap-8 font-sans text-dark">
-          {NavLinks.map((link) => (
-            <li key={link.id}>
-              <a
-                href={link.href}
-                className="relative inline-block text-xl font-semibold transition-colors duration-300 hover:text-primaryLight
-                           after:content-[''] after:absolute after:left-0 after:-bottom-1 
-                           after:h-[2px] after:w-0 after:bg-primary 
-                           after:transition-all after:duration-300 hover:after:w-full"
-              >
-                {link.name}
-              </a>
-            </li>
-          ))}
-        </ul>
-
-      </div>
-    </nav>
-  );
-};
-
-export default Navbar;
+/** @type {import('tailwindcss').Config}  */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,jsx,ts,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        primary: "#0A5C36",
+        primaryLight: "#4CAF50",
+        primaryDark: "#064A2A",
+        dark: "#111111",
+        light: "#F7F7F7",
+        accentRed: "#D64545",
+        accentOrange: "#F28C28",
+        accentGreen: "#7CB342",
+      },
+      fontFamily: {
+        sans: ["Inter", "sans-serif"],
+        heading: ["Poppins", "sans-serif"],
+      },
+      container: {
+        center: true,
+        padding: {DEFAULT: '1rem', sm: '2rem', lg: '3rem', xl: '4rem', }
+      }
+    },
+  },
+  plugins: [],
+}
+ 

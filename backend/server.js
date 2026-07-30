@@ -80,7 +80,7 @@ app.get('/api', (req, res) => {
   res.json({
     name: 'Eden Tree API',
     version: '1.0',
-    endpoints: ['/api/products', '/api/orders', '/api/auth/login', '/api/payments/initialize', '/api/payments/verify', '/api/messages', '/api/newsletter', '/api/broadcasts', '/api/admin/dashboard', '/api/admin/orders', '/api/admin/products', '/api/admin/messages', '/api/admin/subscribers', '/api/admin/broadcasts', '/api/admin/upload', '/api/admin/password']
+    endpoints: ['/api/products', '/api/orders', '/api/auth/login', '/api/payments/initialize', '/api/payments/verify', '/api/payments/hubtel-callback', '/api/messages', '/api/newsletter', '/api/broadcasts', '/api/admin/dashboard', '/api/admin/orders', '/api/admin/products', '/api/admin/messages', '/api/admin/subscribers', '/api/admin/broadcasts', '/api/admin/upload', '/api/admin/password']
   });
 });
 
@@ -139,43 +139,79 @@ app.post('/api/orders', async (req, res) => {
       run(db, 'UPDATE products SET stock = stock - ? WHERE name = ?', [item.quantity, item.name]);
     }
 
+    sendSMS(customer.phone, 'Eden Tree: Order ' + orderId + ' received (GH¢' + total.toFixed(2) + '). Pay via the link sent to your email or visit our shop to complete payment. Thank you!');
+
     return res.json({ id: orderId, total });
   });
 });
 
 /* ══════════════════════════════════════════
-   PAYMENTS (Paystack)
+   PAYMENTS (Hubtel)
    ══════════════════════════════════════════ */
-const PAYSTACK_SECRET = process.env.PAYSTACK_SECRET_KEY || '';
+const HUBTEL_CLIENT_ID = process.env.HUBTEL_CLIENT_ID || '';
+const HUBTEL_CLIENT_SECRET = process.env.HUBTEL_CLIENT_SECRET || '';
+const HUBTEL_MERCHANT_ACCOUNT = process.env.HUBTEL_MERCHANT_ACCOUNT || '';
+const HUBTEL_SENDER_ID = process.env.HUBTEL_SENDER_ID || 'EdenTree';
+const HUBTEL_ONLINE_CHECKOUT_URL = process.env.HUBTEL_ONLINE_CHECKOUT_URL || 'https://api.hubtel.com/v1/merchantaccount/onlinecheckout';
+
+function hubtelAuth() {
+  return 'Basic ' + Buffer.from(HUBTEL_CLIENT_ID + ':' + HUBTEL_CLIENT_SECRET).toString('base64');
+}
+
+async function sendSMS(to, message) {
+  if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET) return;
+  try {
+    await fetch('https://teltoobdirect.hubtel.com/v1/messages/send', {
+      method: 'POST',
+      headers: {
+        'Authorization': hubtelAuth(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: HUBTEL_SENDER_ID, to, content: message }),
+    });
+  } catch (e) {
+    console.error('SMS send failed:', e.message);
+  }
+}
 
 app.post('/api/payments/initialize', async (req, res) => {
   const { orderId, email, amount } = req.body;
   if (!orderId || !email || !amount) return res.status(400).json({ error: 'Missing required fields' });
 
-  if (!PAYSTACK_SECRET) return res.status(500).json({ error: 'Paystack not configured' });
+  if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET || !HUBTEL_MERCHANT_ACCOUNT) {
+    return res.status(500).json({ error: 'Hubtel not configured' });
+  }
 
   try {
-    const resp = await fetch('https://api.paystack.co/transaction/initialize', {
+    const origin = req.headers.origin || 'http://localhost:3000';
+    const payload = {
+      merchantAccountNumber: HUBTEL_MERCHANT_ACCOUNT,
+      totalAmount: Number(amount),
+      title: 'Eden Tree Order ' + orderId,
+      description: 'Payment for order ' + orderId,
+      callbackUrl: origin + '/api/payments/hubtel-callback',
+      returnUrl: origin + '/shop.html?payment=success&order=' + orderId,
+      cancellationUrl: origin + '/shop.html?payment=failed&order=' + orderId,
+      payeeName: '',
+      payeeEmail: email,
+      clientReference: orderId,
+    };
+
+    const resp = await fetch(HUBTEL_ONLINE_CHECKOUT_URL, {
       method: 'POST',
       headers: {
-        'Authorization': 'Bearer ' + PAYSTACK_SECRET,
+        'Authorization': hubtelAuth(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        email,
-        amount: Math.round(amount * 100),
-        reference: 'EDEN-' + orderId + '-' + Date.now(),
-        callback_url: req.headers.origin + '/shop.html?payment=success&order=' + orderId,
-        metadata: { order_id: orderId },
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await resp.json();
 
-    if (data.status) {
+    if (data.responseCode === '0000') {
       await withDb(async (db) => {
-        run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', [data.data.reference, orderId]);
+        run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', [data.data.checkoutUrl, orderId]);
       });
-      return res.json({ authorization_url: data.data.authorization_url, reference: data.data.reference });
+      return res.json({ authorization_url: data.data.checkoutUrl, reference: orderId });
     }
     return res.status(400).json({ error: data.message || 'Payment initialization failed' });
   } catch (err) {
@@ -183,28 +219,32 @@ app.post('/api/payments/initialize', async (req, res) => {
   }
 });
 
+app.post('/api/payments/hubtel-callback', async (req, res) => {
+  const { ClientReference, Status, Amount } = req.body;
+  if (!ClientReference) return res.status(400).json({ error: 'Missing reference' });
+
+  await withDb(async (db) => {
+    if (Status === 'success') {
+      run(db, 'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?', ['paid', 'pending', ClientReference]);
+      const order = queryOne(db, 'SELECT * FROM orders WHERE id = ?', [ClientReference]);
+      if (order && order.customer_phone) {
+        sendSMS(order.customer_phone, 'Eden Tree: Payment confirmed for ' + ClientReference + ' (GH¢' + Number(order.total).toFixed(2) + '). We are processing your order. Thank you!');
+      }
+    }
+    run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', [JSON.stringify(req.body), ClientReference]);
+    return res.json({ success: true });
+  });
+});
+
 app.get('/api/payments/verify', async (req, res) => {
   const { reference } = req.query;
   if (!reference) return res.status(400).json({ error: 'Reference required' });
-  if (!PAYSTACK_SECRET) return res.status(500).json({ error: 'Paystack not configured' });
 
-  try {
-    const resp = await fetch('https://api.paystack.co/transaction/verify/' + encodeURIComponent(reference), {
-      headers: { 'Authorization': 'Bearer ' + PAYSTACK_SECRET },
-    });
-    const data = await resp.json();
-
-    if (data.status && data.data.status === 'success') {
-      const orderId = data.data.metadata?.order_id;
-      await withDb(async (db) => {
-        run(db, 'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?', ['paid', 'pending', orderId]);
-      });
-      return res.json({ verified: true, order_id: orderId });
-    }
-    return res.json({ verified: false });
-  } catch (err) {
-    return res.status(500).json({ error: 'Verification failed' });
-  }
+  await withDb(async (db) => {
+    const order = queryOne(db, 'SELECT * FROM orders WHERE id = ?', [reference]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    return res.json({ verified: order.payment_status === 'paid', order_id: order.id });
+  });
 });
 
 /* ══════════════════════════════════════════
@@ -432,7 +472,7 @@ initDatabase().then(() => {
     console.log(`\n  Eden Tree Backend running at http://localhost:${PORT}`);
     console.log(`  API: http://localhost:${PORT}/api/`);
     console.log(`  Admin: http://localhost:${PORT}/admin.html`);
-    if (!PAYSTACK_SECRET) console.log('  ⚠  PAYSTACK_SECRET_KEY not set — payments disabled');
+    if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET) console.log('  ⚠  Hubtel not configured — payments & SMS disabled');
     console.log();
   });
 }).catch(err => {

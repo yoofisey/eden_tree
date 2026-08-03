@@ -114,6 +114,7 @@
       '<button type="button" class="cart-checkout-btn" id="cart-checkout-btn">Proceed to Checkout</button>' +
       '<form id="checkout-form" class="checkout-form" style="display:none">' +
         '<h3>Checkout</h3>' +
+        '<div class="checkout-fields">' +
         '<div class="form-group"><label>Full Name</label><input type="text" name="name" required></div>' +
         '<div class="form-group"><label>Email</label><input type="email" name="email" required></div>' +
         '<div class="form-group"><label>Phone</label><input type="tel" name="phone" placeholder="e.g. +233 50 123 4567" required></div>' +
@@ -123,6 +124,7 @@
           '<option value="pickup">Pickup</option>' +
         '</select></div>' +
         '<div class="form-group"><label>Order Notes (optional)</label><textarea name="notes" rows="2"></textarea></div>' +
+        '</div>' +
         '<div class="checkout-btns">' +
           '<button type="button" class="back-btn" id="cart-back-btn">Back</button>' +
           '<button type="submit" class="place-btn">Place Order</button>' +

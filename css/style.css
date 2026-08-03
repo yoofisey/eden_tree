@@ -1673,6 +1673,17 @@ body.cart-open { overflow: hidden; }
   margin-top: 4px;
 }
 
+.checkout-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 36vh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 .checkout-btns button {
   flex: 1;
   padding: 14px;

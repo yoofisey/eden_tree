@@ -660,6 +660,44 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--gray-500);
 }
 
+/* ── Stats strip ── */
+.stats-strip {
+  background: linear-gradient(135deg, var(--green-800), var(--green-700) 55%, #3d7a17);
+  border-radius: 24px;
+  padding: 52px 32px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.14);
+}
+
+.stats-strip-item + .stats-strip-item {
+  border-left: 1px solid rgba(255,255,255,0.18);
+}
+
+.stats-strip-number {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(40px, 5vw, 60px);
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+
+.stats-strip-label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.85);
+}
+
+@media (max-width: 640px) {
+  .stats-strip { grid-template-columns: 1fr; padding: 40px 24px; gap: 36px; }
+  .stats-strip-item + .stats-strip-item { border-left: none; border-top: 1px solid rgba(255,255,255,0.18); padding-top: 36px; }
+}
+
 /* ── Team ── */
 .team-grid {
   display: grid;

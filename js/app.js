@@ -45,6 +45,13 @@
     if (countEl) countEl.textContent = '(' + count + ' item' + (count !== 1 ? 's' : '') + ')';
   }
 
+  function updateCartSubtotal() {
+    var el = $('#cart-subtotal');
+    if (!el) return;
+    var subtotal = getCart().reduce(function (s, i) { return s + (i.price * i.qty); }, 0);
+    el.textContent = 'GH¢ ' + subtotal.toFixed(2);
+  }
+
   var shopProducts = [];
 
   function renderShopGrid() {
@@ -202,20 +209,36 @@
         var prod = shopProducts.find(function (p) { return String(p.id) === String(item.id); });
         if (prod && item.qty >= prod.stock) { showToast('Maximum stock reached', 'error'); return; }
         item.qty++;
-        showToast(item.name + ' added to cart');
       } else if (btn.dataset.action === 'decr' && item.qty > 1) {
         item.qty--;
       }
       saveCart(cart);
-      renderCart();
+      var row = btn.closest('.cart-item');
+      if (row) {
+        var qtyEl = row.querySelector('.cart-item-qty span');
+        if (qtyEl) qtyEl.textContent = item.qty;
+        var decrBtn = row.querySelector('[data-action="decr"]');
+        var incrBtn = row.querySelector('[data-action="incr"]');
+        var prod2 = shopProducts.find(function (p) { return String(p.id) === String(item.id); });
+        if (decrBtn) decrBtn.disabled = item.qty <= 1;
+        if (incrBtn) incrBtn.disabled = !prod2 || item.qty >= prod2.stock;
+      }
+      updateCartSubtotal();
     });
 
     document.addEventListener('click', function (e) {
       var btn = e.target.closest('.cart-item-remove');
       if (!btn) return;
-      var cart = getCart().filter(function (i) { return String(i.id) !== String(btn.dataset.id); });
+      var id = btn.dataset.id;
+      var cart = getCart().filter(function (i) { return String(i.id) !== id; });
       saveCart(cart);
-      renderCart();
+      var row = btn.closest('.cart-item');
+      if (row) row.remove();
+      if (!cart.length) {
+        renderCart();
+      } else {
+        updateCartSubtotal();
+      }
     });
 
     document.addEventListener('click', function (e) {

@@ -1425,6 +1425,7 @@ body.cart-open { overflow: hidden; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 24px 28px;
 }
@@ -1574,6 +1575,7 @@ body.cart-open { overflow: hidden; }
   flex-shrink: 0;
   max-height: calc(100vh - 90px);
   overflow-y: auto;
+  overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
 }
 

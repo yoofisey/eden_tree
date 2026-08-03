@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
-const { getDb, saveDb, queryAll, queryOne, run, initDatabase } = require('./database');
+const { getDb, saveDb, queryAll, queryOne, run, insertAndGetId, initDatabase } = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -71,7 +71,7 @@ app.post('/api/auth/login', async (req, res) => {
   if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
 
   await withDb(async (db) => {
-    const user = queryOne(db, 'SELECT * FROM users WHERE username = ?', [username]);
+    const user = await queryOne(db, 'SELECT * FROM users WHERE username = ?', [username]);
     if (!user) return res.status(401).json({ error: 'Invalid credentials' });
 
     const match = await bcrypt.compare(password, user.password_hash);
@@ -98,14 +98,14 @@ app.get('/api', (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/products', async (req, res) => {
   await withDb(async (db) => {
-    const products = queryAll(db, 'SELECT * FROM products ORDER BY id');
+    const products = await queryAll(db, 'SELECT * FROM products ORDER BY id');
     return res.json(products.map(p => ({ ...p, inStock: !!p.inStock })));
   });
 });
 
 app.get('/api/products/:id', async (req, res) => {
   await withDb(async (db) => {
-    const product = queryOne(db, 'SELECT * FROM products WHERE id = ?', [req.params.id]);
+    const product = await queryOne(db, 'SELECT * FROM products WHERE id = ?', [req.params.id]);
     if (!product) return res.status(404).json({ error: 'Product not found' });
     return res.json({ ...product, inStock: !!product.inStock });
   });
@@ -125,7 +125,7 @@ app.post('/api/orders', async (req, res) => {
     const orderItems = [];
 
     for (const item of items) {
-      const product = queryOne(db, 'SELECT * FROM products WHERE name = ?', [item.name]);
+      const product = await queryOne(db, 'SELECT * FROM products WHERE name = ?', [item.name]);
       if (!product) return res.status(400).json({ error: `Product "${item.name}" not found` });
       if (product.stock < item.quantity) return res.status(400).json({ error: `Insufficient stock for "${item.name}"` });
       total += product.price * item.quantity;
@@ -134,18 +134,17 @@ app.post('/api/orders', async (req, res) => {
 
     const orderId = 'ORD-' + Date.now().toString(36).toUpperCase();
 
-    run(db, `INSERT INTO orders (id, customer_name, customer_email, customer_phone, customer_address, total, status, delivery_type, notes, payment_status)
+    await run(db, `INSERT INTO orders (id, customer_name, customer_email, customer_phone, customer_address, total, status, delivery_type, notes, payment_status)
       VALUES (?, ?, ?, ?, ?, ?, 'pending_payment', ?, ?, 'unpaid')`,
       [orderId, customer.name, customer.email, customer.phone || '', customer.address || '', total, deliveryType || 'delivery', notes || '']);
 
-    const stmt = db.prepare('INSERT INTO order_items (order_id, product_name, quantity, price) VALUES (?, ?, ?, ?)');
     for (const oi of orderItems) {
-      stmt.run([orderId, oi.name, oi.quantity, oi.price]);
+      await run(db, 'INSERT INTO order_items (order_id, product_name, quantity, price) VALUES (?, ?, ?, ?)',
+        [orderId, oi.name, oi.quantity, oi.price]);
     }
-    stmt.free();
 
     for (const item of items) {
-      run(db, 'UPDATE products SET stock = stock - ? WHERE name = ?', [item.quantity, item.name]);
+      await run(db, 'UPDATE products SET stock = stock - ? WHERE name = ?', [item.quantity, item.name]);
     }
 
     sendSMS(customer.phone, 'Eden Tree: Order ' + orderId + ' received (GH¢' + total.toFixed(2) + '). Thank you!');
@@ -170,7 +169,7 @@ app.post('/api/payments/initialize', async (req, res) => {
 
   /* In demo mode, mark the order so the confirm step can finalise it */
   await withDb(async (db) => {
-    run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', ['demo_' + Date.now(), orderId]);
+    await run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', ['demo_' + Date.now(), orderId]);
   });
   return res.json({ demo: true, reference: orderId });
 });
@@ -181,11 +180,11 @@ app.post('/api/payments/demo-confirm', async (req, res) => {
   if (!orderId) return res.status(400).json({ error: 'Order ID required' });
 
   await withDb(async (db) => {
-    const order = queryOne(db, 'SELECT * FROM orders WHERE id = ?', [orderId]);
+    const order = await queryOne(db, 'SELECT * FROM orders WHERE id = ?', [orderId]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.payment_status === 'paid') return res.json({ success: true, already: true });
 
-    run(db, 'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?', ['paid', 'pending', orderId]);
+    await run(db, 'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?', ['paid', 'pending', orderId]);
     if (order.customer_phone) {
       sendSMS(order.customer_phone, 'Eden Tree: Payment confirmed for ' + orderId + ' (GH¢' + Number(order.total).toFixed(2) + '). We are processing your order. Thank you!');
     }
@@ -199,7 +198,7 @@ app.get('/api/payments/verify', async (req, res) => {
   if (!reference) return res.status(400).json({ error: 'Reference required' });
 
   await withDb(async (db) => {
-    const order = queryOne(db, 'SELECT * FROM orders WHERE id = ?', [reference]);
+    const order = await queryOne(db, 'SELECT * FROM orders WHERE id = ?', [reference]);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     return res.json({ verified: order.payment_status === 'paid', order_id: order.id });
   });
@@ -213,7 +212,7 @@ app.post('/api/messages', async (req, res) => {
   if (!name || !email || !message) return res.status(400).json({ error: 'Name, email, and message required' });
 
   await withDb(async (db) => {
-    run(db, 'INSERT INTO messages (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)',
+    await run(db, 'INSERT INTO messages (name, email, phone, subject, message) VALUES (?, ?, ?, ?, ?)',
       [name, email, phone || '', subject || '', message]);
     return res.json({ success: true });
   });
@@ -228,10 +227,10 @@ app.post('/api/newsletter', async (req, res) => {
 
   await withDb(async (db) => {
     try {
-      run(db, 'INSERT INTO newsletter_subscribers (email) VALUES (?)', [email]);
+      await run(db, 'INSERT INTO newsletter_subscribers (email) VALUES (?)', [email]);
       return res.json({ success: true });
     } catch (e) {
-      if (e.message && e.message.includes('UNIQUE')) return res.json({ success: true, already: true });
+      if (e.code === '23505' || (e.message && e.message.includes('UNIQUE'))) return res.json({ success: true, already: true });
       return res.status(500).json({ error: 'Server error' });
     }
   });
@@ -242,7 +241,7 @@ app.post('/api/newsletter', async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/broadcasts', async (req, res) => {
   await withDb(async (db) => {
-    const broadcasts = queryAll(db, 'SELECT * FROM broadcasts ORDER BY createdAt DESC LIMIT 1');
+    const broadcasts = await queryAll(db, 'SELECT * FROM broadcasts ORDER BY createdAt DESC LIMIT 1');
     return res.json(broadcasts);
   });
 });
@@ -252,17 +251,20 @@ app.get('/api/broadcasts', async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    const totalOrders = queryOne(db, 'SELECT COUNT(*) as count FROM orders');
-    const pendingOrders = queryOne(db, "SELECT COUNT(*) as count FROM orders WHERE status IN ('pending','pending_payment','confirmed')");
-    const totalRevenue = queryOne(db, "SELECT COALESCE(SUM(total),0) as sum FROM orders WHERE payment_status='paid'");
-    const lowStock = queryAll(db, 'SELECT * FROM products WHERE stock <= minStock ORDER BY stock ASC LIMIT 5');
-    const recentOrders = queryAll(db, "SELECT * FROM orders ORDER BY createdAt DESC LIMIT 5");
-    const unreadMessages = queryOne(db, 'SELECT COUNT(*) as count FROM messages WHERE is_read = 0');
-    const subscriberCount = queryOne(db, 'SELECT COUNT(*) as count FROM newsletter_subscribers');
-    const revenueByDay = queryAll(db, "SELECT date(createdAt) as day, COALESCE(SUM(total),0) as total FROM orders WHERE payment_status='paid' AND createdAt >= date('now','-6 days') GROUP BY date(createdAt)");
+    const totalOrders = await queryOne(db, 'SELECT COUNT(*) as count FROM orders');
+    const pendingOrders = await queryOne(db, "SELECT COUNT(*) as count FROM orders WHERE status IN ('pending','pending_payment','confirmed')");
+    const totalRevenue = await queryOne(db, "SELECT COALESCE(SUM(total),0) as sum FROM orders WHERE payment_status='paid'");
+    const lowStock = await queryAll(db, 'SELECT * FROM products WHERE stock <= minStock ORDER BY stock ASC LIMIT 5');
+    const recentOrders = await queryAll(db, "SELECT * FROM orders ORDER BY createdAt DESC LIMIT 5");
+    const unreadMessages = await queryOne(db, 'SELECT COUNT(*) as count FROM messages WHERE is_read = 0');
+    const subscriberCount = await queryOne(db, 'SELECT COUNT(*) as count FROM newsletter_subscribers');
+    const paidOrders = await queryAll(db, "SELECT createdAt, total FROM orders WHERE payment_status = 'paid'");
 
     const revenueByDayMap = {};
-    revenueByDay.forEach(r => { revenueByDayMap[r.day] = Number(r.total); });
+    paidOrders.forEach(r => {
+      const day = String(r.createdAt).slice(0, 10);
+      revenueByDayMap[day] = (revenueByDayMap[day] || 0) + Number(r.total);
+    });
     const days = [];
     for (let i = 6; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000);
@@ -271,13 +273,13 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     }
 
     return res.json({
-      total_orders: totalOrders.count,
-      pending_orders: pendingOrders.count,
-      total_revenue: totalRevenue.sum,
+      total_orders: Number(totalOrders.count),
+      pending_orders: Number(pendingOrders.count),
+      total_revenue: Number(totalRevenue.sum),
       low_stock: lowStock.map(p => ({ ...p, inStock: !!p.inStock })),
       recent_orders: recentOrders,
-      unread_messages: unreadMessages.count,
-      subscriber_count: subscriberCount.count,
+      unread_messages: Number(unreadMessages.count),
+      subscriber_count: Number(subscriberCount.count),
       revenue_by_day: days,
     });
   });
@@ -288,11 +290,12 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/admin/orders', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    const orders = queryAll(db, 'SELECT * FROM orders ORDER BY createdAt DESC');
-    const enriched = orders.map(o => {
-      const items = queryAll(db, 'SELECT * FROM order_items WHERE order_id = ?', [o.id]);
-      return { ...o, items };
-    });
+    const orders = await queryAll(db, 'SELECT * FROM orders ORDER BY createdAt DESC');
+    const enriched = [];
+    for (const o of orders) {
+      const items = await queryAll(db, 'SELECT * FROM order_items WHERE order_id = ?', [o.id]);
+      enriched.push({ ...o, items });
+    }
     return res.json(enriched);
   });
 });
@@ -302,7 +305,7 @@ app.put('/api/admin/orders/:id', requireAuth, async (req, res) => {
   if (!status) return res.status(400).json({ error: 'Status required' });
 
   await withDb(async (db) => {
-    run(db, 'UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
+    await run(db, 'UPDATE orders SET status = ? WHERE id = ?', [status, req.params.id]);
     return res.json({ success: true });
   });
 });
@@ -312,7 +315,7 @@ app.put('/api/admin/orders/:id', requireAuth, async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/admin/products', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    const products = queryAll(db, 'SELECT * FROM products ORDER BY id');
+    const products = await queryAll(db, 'SELECT * FROM products ORDER BY id');
     return res.json(products.map(p => ({ ...p, inStock: !!p.inStock })));
   });
 });
@@ -322,9 +325,9 @@ app.post('/api/admin/products', requireAuth, async (req, res) => {
   if (!name || !category || !price || !unit) return res.status(400).json({ error: 'Missing required fields' });
 
   await withDb(async (db) => {
-    run(db, `INSERT INTO products (name, category, price, unit, description, image, inStock, stock, minStock)
+    const id = await insertAndGetId(db, `INSERT INTO products (name, category, price, unit, description, image, inStock, stock, minStock)
       VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)`, [name, category, price, unit, description || '', image || '', stock || 0, minStock || 5]);
-    return res.json({ success: true, id: db.exec("SELECT last_insert_rowid()")[0]?.values?.[0]?.[0] });
+    return res.json({ success: true, id });
   });
 });
 
@@ -332,15 +335,15 @@ app.put('/api/admin/products/:id', requireAuth, async (req, res) => {
   const { name, category, price, unit, description, image, inStock, stock, minStock } = req.body;
 
   await withDb(async (db) => {
-    run(db, `UPDATE products SET name=?, category=?, price=?, unit=?, description=?, image=?, inStock=?, stock=?, minStock=?, updatedAt=datetime('now') WHERE id=?`,
-      [name, category, price, unit, description, image, inStock ? 1 : 0, stock, minStock, req.params.id]);
+    await run(db, `UPDATE products SET name=?, category=?, price=?, unit=?, description=?, image=?, inStock=?, stock=?, minStock=?, updatedAt=? WHERE id=?`,
+      [name, category, price, unit, description, image, inStock ? 1 : 0, stock, minStock, new Date().toISOString(), req.params.id]);
     return res.json({ success: true });
   });
 });
 
 app.delete('/api/admin/products/:id', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    run(db, 'DELETE FROM products WHERE id = ?', [req.params.id]);
+    await run(db, 'DELETE FROM products WHERE id = ?', [req.params.id]);
     return res.json({ success: true });
   });
 });
@@ -350,7 +353,7 @@ app.delete('/api/admin/products/:id', requireAuth, async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/admin/messages', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    const messages = queryAll(db, 'SELECT * FROM messages ORDER BY createdAt DESC');
+    const messages = await queryAll(db, 'SELECT * FROM messages ORDER BY createdAt DESC');
     return res.json(messages);
   });
 });
@@ -358,14 +361,14 @@ app.get('/api/admin/messages', requireAuth, async (req, res) => {
 app.put('/api/admin/messages/:id', requireAuth, async (req, res) => {
   const { is_read } = req.body;
   await withDb(async (db) => {
-    run(db, 'UPDATE messages SET is_read = ? WHERE id = ?', [is_read ? 1 : 0, req.params.id]);
+    await run(db, 'UPDATE messages SET is_read = ? WHERE id = ?', [is_read ? 1 : 0, req.params.id]);
     return res.json({ success: true });
   });
 });
 
 app.delete('/api/admin/messages/:id', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    run(db, 'DELETE FROM messages WHERE id = ?', [req.params.id]);
+    await run(db, 'DELETE FROM messages WHERE id = ?', [req.params.id]);
     return res.json({ success: true });
   });
 });
@@ -375,7 +378,7 @@ app.delete('/api/admin/messages/:id', requireAuth, async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/admin/subscribers', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    const subs = queryAll(db, 'SELECT * FROM newsletter_subscribers ORDER BY createdAt DESC');
+    const subs = await queryAll(db, 'SELECT * FROM newsletter_subscribers ORDER BY createdAt DESC');
     return res.json(subs);
   });
 });
@@ -385,7 +388,7 @@ app.get('/api/admin/subscribers', requireAuth, async (req, res) => {
    ══════════════════════════════════════════ */
 app.get('/api/admin/broadcasts', requireAuth, async (req, res) => {
   await withDb(async (db) => {
-    const broadcasts = queryAll(db, 'SELECT * FROM broadcasts ORDER BY createdAt DESC LIMIT 10');
+    const broadcasts = await queryAll(db, 'SELECT * FROM broadcasts ORDER BY createdAt DESC LIMIT 10');
     return res.json(broadcasts);
   });
 });
@@ -396,9 +399,9 @@ app.post('/api/admin/broadcasts', requireAuth, async (req, res) => {
 
   await withDb(async (db) => {
     const id = uuidv4();
-    run(db, 'INSERT INTO broadcasts (id, title, message) VALUES (?, ?, ?)', [id, title, message]);
-    const subCount = queryOne(db, 'SELECT COUNT(*) as count FROM newsletter_subscribers');
-    return res.json({ success: true, id, recipient_count: subCount.count });
+    await run(db, 'INSERT INTO broadcasts (id, title, message) VALUES (?, ?, ?)', [id, title, message]);
+    const subCount = await queryOne(db, 'SELECT COUNT(*) as count FROM newsletter_subscribers');
+    return res.json({ success: true, id, recipient_count: Number(subCount.count) });
   });
 });
 
@@ -420,12 +423,12 @@ app.put('/api/admin/password', requireAuth, async (req, res) => {
   if (newPassword.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
 
   await withDb(async (db) => {
-    const user = queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.user.id]);
+    const user = await queryOne(db, 'SELECT * FROM users WHERE id = ?', [req.user.id]);
     const match = await bcrypt.compare(currentPassword, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Current password is incorrect' });
 
     const hash = await bcrypt.hash(newPassword, 10);
-    run(db, 'UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
+    await run(db, 'UPDATE users SET password_hash = ? WHERE id = ?', [hash, req.user.id]);
     return res.json({ success: true });
   });
 });

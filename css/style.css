@@ -2434,6 +2434,28 @@ body.cart-open { overflow: hidden; }
   border-bottom: 1px solid var(--gray-50);
 }
 
+.admin-subscriber-item span {
+  flex: 1;
+}
+
+.admin-subscriber-delete {
+  background: none;
+  border: none;
+  color: var(--gray-400);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background 0.2s;
+}
+
+.admin-subscriber-delete:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}
+
 .admin-subscriber-item:last-child {
   border-bottom: none;
 }
@@ -2559,6 +2581,39 @@ body.cart-open { overflow: hidden; }
   font-size: 15px;
   color: var(--gray-900);
   letter-spacing: 0.02em;
+}
+
+.admin-order-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.admin-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  background: white;
+  color: var(--gray-400);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+}
+
+.admin-icon-btn svg {
+  width: 15px;
+  height: 15px;
+}
+
+.admin-icon-btn:hover {
+  color: #dc2626;
+  border-color: #fecaca;
+  background: #fef2f2;
 }
 
 .admin-order-date {

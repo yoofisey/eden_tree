@@ -310,6 +310,14 @@ app.put('/api/admin/orders/:id', requireAuth, async (req, res) => {
   });
 });
 
+app.delete('/api/admin/orders/:id', requireAuth, async (req, res) => {
+  await withDb(async (db) => {
+    await run(db, 'DELETE FROM order_items WHERE order_id = ?', [req.params.id]);
+    await run(db, 'DELETE FROM orders WHERE id = ?', [req.params.id]);
+    return res.json({ success: true });
+  });
+});
+
 /* ══════════════════════════════════════════
    ADMIN — PRODUCTS
    ══════════════════════════════════════════ */
@@ -380,6 +388,13 @@ app.get('/api/admin/subscribers', requireAuth, async (req, res) => {
   await withDb(async (db) => {
     const subs = await queryAll(db, 'SELECT * FROM newsletter_subscribers ORDER BY createdAt DESC');
     return res.json(subs);
+  });
+});
+
+app.delete('/api/admin/subscribers/:id', requireAuth, async (req, res) => {
+  await withDb(async (db) => {
+    await run(db, 'DELETE FROM newsletter_subscribers WHERE id = ?', [req.params.id]);
+    return res.json({ success: true });
   });
 });
 

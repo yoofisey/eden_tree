@@ -141,9 +141,12 @@ function renderOrders() {
           return '<div class="admin-order-card">' +
             '<div class="admin-order-header">' +
               '<span class="admin-order-id">' + escapeHtml(o.id) + '</span>' +
-              '<select class="admin-status-select" data-order-id="' + o.id + '" style="background:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '20;color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + ';border-color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '40">' +
-                Object.keys(STATUS_LABELS).map(function (s) { return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('') +
-              '</select>' +
+              '<div style="display:flex;align-items:center;gap:10px">' +
+                '<select class="admin-status-select" data-order-id="' + o.id + '" style="background:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '20;color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + ';border-color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '40">' +
+                  Object.keys(STATUS_LABELS).map(function (s) { return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('') +
+                '</select>' +
+                '<button class="admin-icon-btn delete-order-btn" data-id="' + o.id + '" title="Delete order"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>' +
+              '</div>' +
             '</div>' +
             '<div class="admin-order-customer"><strong>' + escapeHtml(o.customer_name) + '</strong> &lt;' + escapeHtml(o.customer_email) + '&gt;' + (o.customer_phone ? ' &mdash; ' + escapeHtml(o.customer_phone) : '') + '</div>' +
             '<div class="admin-order-meta">' + new Date(o.createdAt).toLocaleDateString() + ' &middot; GH¢ ' + Number(o.total).toFixed(2) + ' &middot; ' + o.delivery_type + ' &middot; Payment: ' + o.payment_status + '</div>' +
@@ -158,6 +161,16 @@ function renderOrders() {
             showToast('Order status updated');
             renderOrders();
           }).catch(function (err) { showToast(err.message || 'Update failed', 'error'); });
+        });
+      });
+
+      container.querySelectorAll('.delete-order-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('Delete order ' + btn.dataset.id + '? This cannot be undone.')) return;
+          API.del('/api/admin/orders/' + btn.dataset.id).then(function () {
+            showToast('Order deleted');
+            renderOrders();
+          }).catch(function (err) { showToast(err.message || 'Delete failed', 'error'); });
         });
       });
 
@@ -473,7 +486,7 @@ function renderSubscribers() {
             ? '<div style="text-align:center;padding:60px 20px;background:white;border:1px solid var(--gray-100);border-radius:14px"><h3 style="font-size:16px;color:var(--gray-900)">No subscribers yet</h3><p style="color:var(--gray-400);font-size:13px">Signups from the footer will appear here.</p></div>'
             : '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:12px"><span style="font-size:14px;color:var(--gray-500)">' + emails.length + ' subscriber' + (emails.length !== 1 ? 's' : '') + '</span><button id="export-subscribers-btn" class="admin-btn-outline" style="font-size:13px;padding:7px 18px">Export CSV</button></div>' +
               '<div class="admin-subscriber-list">' + emails.map(function (e) {
-                return '<div class="admin-subscriber-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px;color:var(--green-500);flex-shrink:0"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg><span>' + escapeHtml(e.email) + '</span></div>';
+                return '<div class="admin-subscriber-item"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:16px;height:16px;color:var(--green-500);flex-shrink:0"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg><span>' + escapeHtml(e.email) + '</span><button class="admin-subscriber-delete" data-id="' + e.id + '" title="Remove subscriber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button></div>';
               }).join('') + '</div>'
           ) +
         '</div>' +
@@ -503,6 +516,16 @@ function renderSubscribers() {
         document.body.removeChild(a);
       });
     }
+
+    container.querySelectorAll('.admin-subscriber-delete').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Remove this subscriber?')) return;
+        API.del('/api/admin/subscribers/' + btn.dataset.id).then(function () {
+          showToast('Subscriber removed');
+          renderSubscribers();
+        }).catch(function (err) { showToast(err.message || 'Delete failed', 'error'); });
+      });
+    });
 
     $('#broadcast-form').addEventListener('submit', function (e) {
       e.preventDefault();

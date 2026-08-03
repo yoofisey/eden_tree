@@ -1,0 +1,23 @@
+{
+  "name": "eden-tree",
+  "version": "1.0.0",
+  "description": "Eden Tree Ltd. — fresh produce website + store",
+  "main": "backend/server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.2.0",
+    "sql.js": "^1.14.1",
+    "uuid": "^10.0.0"
+  }
+}

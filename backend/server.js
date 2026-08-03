@@ -27,7 +27,13 @@ const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..')));
+app.use(express.static(path.join(__dirname, '..'), {
+  setHeaders: function (res, filePath) {
+    if (process.env.NODE_ENV !== 'production') {
+      res.setHeader('Cache-Control', 'no-store');
+    }
+  }
+}));
 app.use('/uploads', express.static(uploadsDir));
 
 /* ── Auth Middleware ── */
@@ -41,6 +47,9 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Invalid token' });
   }
 }
+
+/* ── Demo mode flag — flip to false when real payments go live ── */
+const DEMO_MODE = true;
 
 /* ── Helper: load DB, run callback, save ── */
 async function withDb(cb) {
@@ -80,7 +89,7 @@ app.get('/api', (req, res) => {
   res.json({
     name: 'Eden Tree API',
     version: '1.0',
-    endpoints: ['/api/products', '/api/orders', '/api/auth/login', '/api/payments/initialize', '/api/payments/verify', '/api/payments/hubtel-callback', '/api/messages', '/api/newsletter', '/api/broadcasts', '/api/admin/dashboard', '/api/admin/orders', '/api/admin/products', '/api/admin/messages', '/api/admin/subscribers', '/api/admin/broadcasts', '/api/admin/upload', '/api/admin/password']
+    endpoints: ['/api/products', '/api/orders', '/api/auth/login', '/api/payments/initialize', '/api/payments/demo-confirm', '/api/payments/verify', '/api/messages', '/api/newsletter', '/api/broadcasts', '/api/admin/dashboard', '/api/admin/orders', '/api/admin/products', '/api/admin/messages', '/api/admin/subscribers', '/api/admin/broadcasts', '/api/admin/upload', '/api/admin/password']
   });
 });
 
@@ -139,103 +148,52 @@ app.post('/api/orders', async (req, res) => {
       run(db, 'UPDATE products SET stock = stock - ? WHERE name = ?', [item.quantity, item.name]);
     }
 
-    sendSMS(customer.phone, 'Eden Tree: Order ' + orderId + ' received (GH¢' + total.toFixed(2) + '). Pay via the link sent to your email or visit our shop to complete payment. Thank you!');
+    sendSMS(customer.phone, 'Eden Tree: Order ' + orderId + ' received (GH¢' + total.toFixed(2) + '). Thank you!');
 
     return res.json({ id: orderId, total });
   });
 });
 
 /* ══════════════════════════════════════════
-   PAYMENTS (Hubtel)
+   PAYMENTS (Demo Mode)
    ══════════════════════════════════════════ */
-const HUBTEL_CLIENT_ID = process.env.HUBTEL_CLIENT_ID || '';
-const HUBTEL_CLIENT_SECRET = process.env.HUBTEL_CLIENT_SECRET || '';
-const HUBTEL_MERCHANT_ACCOUNT = process.env.HUBTEL_MERCHANT_ACCOUNT || '';
-const HUBTEL_SENDER_ID = process.env.HUBTEL_SENDER_ID || 'EdenTree';
-const HUBTEL_ONLINE_CHECKOUT_URL = process.env.HUBTEL_ONLINE_CHECKOUT_URL || 'https://api.hubtel.com/v1/merchantaccount/onlinecheckout';
 
-function hubtelAuth() {
-  return 'Basic ' + Buffer.from(HUBTEL_CLIENT_ID + ':' + HUBTEL_CLIENT_SECRET).toString('base64');
-}
-
+/* ── Demo-mode SMS: just logs to console ── */
 async function sendSMS(to, message) {
-  if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET) return;
-  try {
-    await fetch('https://teltoobdirect.hubtel.com/v1/messages/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': hubtelAuth(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ from: HUBTEL_SENDER_ID, to, content: message }),
-    });
-  } catch (e) {
-    console.error('SMS send failed:', e.message);
-  }
+  console.log('\n  [SMS to ' + to + '] ' + message + '\n');
 }
 
+/* ── Demo payment init: returns success token ── */
 app.post('/api/payments/initialize', async (req, res) => {
   const { orderId, email, amount } = req.body;
   if (!orderId || !email || !amount) return res.status(400).json({ error: 'Missing required fields' });
 
-  if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET || !HUBTEL_MERCHANT_ACCOUNT) {
-    return res.status(500).json({ error: 'Hubtel not configured' });
-  }
-
-  try {
-    const origin = req.headers.origin || 'http://localhost:3000';
-    const payload = {
-      merchantAccountNumber: HUBTEL_MERCHANT_ACCOUNT,
-      totalAmount: Number(amount),
-      title: 'Eden Tree Order ' + orderId,
-      description: 'Payment for order ' + orderId,
-      callbackUrl: origin + '/api/payments/hubtel-callback',
-      returnUrl: origin + '/shop.html?payment=success&order=' + orderId,
-      cancellationUrl: origin + '/shop.html?payment=failed&order=' + orderId,
-      payeeName: '',
-      payeeEmail: email,
-      clientReference: orderId,
-    };
-
-    const resp = await fetch(HUBTEL_ONLINE_CHECKOUT_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': hubtelAuth(),
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json();
-
-    if (data.responseCode === '0000') {
-      await withDb(async (db) => {
-        run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', [data.data.checkoutUrl, orderId]);
-      });
-      return res.json({ authorization_url: data.data.checkoutUrl, reference: orderId });
-    }
-    return res.status(400).json({ error: data.message || 'Payment initialization failed' });
-  } catch (err) {
-    return res.status(500).json({ error: 'Payment service error' });
-  }
+  /* In demo mode, mark the order so the confirm step can finalise it */
+  await withDb(async (db) => {
+    run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', ['demo_' + Date.now(), orderId]);
+  });
+  return res.json({ demo: true, reference: orderId });
 });
 
-app.post('/api/payments/hubtel-callback', async (req, res) => {
-  const { ClientReference, Status, Amount } = req.body;
-  if (!ClientReference) return res.status(400).json({ error: 'Missing reference' });
+/* ── Demo payment confirm: marks order as paid ── */
+app.post('/api/payments/demo-confirm', async (req, res) => {
+  const { orderId } = req.body;
+  if (!orderId) return res.status(400).json({ error: 'Order ID required' });
 
   await withDb(async (db) => {
-    if (Status === 'success') {
-      run(db, 'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?', ['paid', 'pending', ClientReference]);
-      const order = queryOne(db, 'SELECT * FROM orders WHERE id = ?', [ClientReference]);
-      if (order && order.customer_phone) {
-        sendSMS(order.customer_phone, 'Eden Tree: Payment confirmed for ' + ClientReference + ' (GH¢' + Number(order.total).toFixed(2) + '). We are processing your order. Thank you!');
-      }
+    const order = queryOne(db, 'SELECT * FROM orders WHERE id = ?', [orderId]);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.payment_status === 'paid') return res.json({ success: true, already: true });
+
+    run(db, 'UPDATE orders SET payment_status = ?, status = ? WHERE id = ?', ['paid', 'pending', orderId]);
+    if (order.customer_phone) {
+      sendSMS(order.customer_phone, 'Eden Tree: Payment confirmed for ' + orderId + ' (GH¢' + Number(order.total).toFixed(2) + '). We are processing your order. Thank you!');
     }
-    run(db, 'UPDATE orders SET payment_reference = ? WHERE id = ?', [JSON.stringify(req.body), ClientReference]);
     return res.json({ success: true });
   });
 });
 
+/* ── Payment verify: checks DB ── */
 app.get('/api/payments/verify', async (req, res) => {
   const { reference } = req.query;
   if (!reference) return res.status(400).json({ error: 'Reference required' });
@@ -301,6 +259,16 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     const recentOrders = queryAll(db, "SELECT * FROM orders ORDER BY createdAt DESC LIMIT 5");
     const unreadMessages = queryOne(db, 'SELECT COUNT(*) as count FROM messages WHERE is_read = 0');
     const subscriberCount = queryOne(db, 'SELECT COUNT(*) as count FROM newsletter_subscribers');
+    const revenueByDay = queryAll(db, "SELECT date(createdAt) as day, COALESCE(SUM(total),0) as total FROM orders WHERE payment_status='paid' AND createdAt >= date('now','-6 days') GROUP BY date(createdAt)");
+
+    const revenueByDayMap = {};
+    revenueByDay.forEach(r => { revenueByDayMap[r.day] = Number(r.total); });
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000);
+      const key = d.toISOString().slice(0, 10);
+      days.push({ day: key, total: revenueByDayMap[key] || 0 });
+    }
 
     return res.json({
       total_orders: totalOrders.count,
@@ -310,6 +278,7 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
       recent_orders: recentOrders,
       unread_messages: unreadMessages.count,
       subscriber_count: subscriberCount.count,
+      revenue_by_day: days,
     });
   });
 });
@@ -472,7 +441,7 @@ initDatabase().then(() => {
     console.log(`\n  Eden Tree Backend running at http://localhost:${PORT}`);
     console.log(`  API: http://localhost:${PORT}/api/`);
     console.log(`  Admin: http://localhost:${PORT}/admin.html`);
-    if (!HUBTEL_CLIENT_ID || !HUBTEL_CLIENT_SECRET) console.log('  ⚠  Hubtel not configured — payments & SMS disabled');
+    console.log('  ' + (DEMO_MODE ? '🧪 Demo mode — payments simulated, SMS logged to console' : '🔒 Live mode'));
     console.log();
   });
 }).catch(err => {

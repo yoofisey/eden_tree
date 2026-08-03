@@ -36,11 +36,13 @@
   }
 
   function updateBadge() {
-    $$('.cart-count').forEach(function (el) {
-      var count = getCart().reduce(function (s, i) { return s + i.qty; }, 0);
+    var count = getCart().reduce(function (s, i) { return s + i.qty; }, 0);
+    $$('.cart-count, #cart-count').forEach(function (el) {
       el.textContent = count;
       el.style.display = count > 0 ? 'flex' : 'none';
     });
+    var countEl = $('#cart-items-count');
+    if (countEl) countEl.textContent = '(' + count + ' item' + (count !== 1 ? 's' : '') + ')';
   }
 
   var shopProducts = [];
@@ -53,7 +55,7 @@
     if (activeCat && activeCat.dataset.filter !== 'all') {
       filtered = shopProducts.filter(function (p) { return p.category === activeCat.dataset.filter; });
     }
-    var search = $('#shop-search');
+    var search = $('#search-input, #shop-search');
     var query = search ? search.value.trim().toLowerCase() : '';
     if (query) {
       filtered = filtered.filter(function (p) { return p.name.toLowerCase().indexOf(query) !== -1; });
@@ -95,11 +97,55 @@
   }
 
   /* ── Cart Drawer ── */
+  function buildCartFooter(footer, cart) {
+    var subtotal = cart.reduce(function (s, i) { return s + (i.price * i.qty); }, 0);
+    footer.innerHTML =
+      '<div class="cart-total">' +
+        '<span>Subtotal</span>' +
+        '<strong id="cart-subtotal">GH¢ ' + subtotal.toFixed(2) + '</strong>' +
+      '</div>' +
+      '<button type="button" class="cart-checkout-btn" id="cart-checkout-btn">Proceed to Checkout</button>' +
+      '<form id="checkout-form" class="checkout-form" style="display:none">' +
+        '<h3>Checkout</h3>' +
+        '<div class="form-group"><label>Full Name</label><input type="text" name="name" required></div>' +
+        '<div class="form-group"><label>Email</label><input type="email" name="email" required></div>' +
+        '<div class="form-group"><label>Phone</label><input type="tel" name="phone" placeholder="e.g. +233 50 123 4567" required></div>' +
+        '<div class="form-group"><label>Delivery Address</label><input type="text" name="address"></div>' +
+        '<div class="form-group"><label>Delivery Type</label><select name="deliveryType">' +
+          '<option value="delivery">Home Delivery</option>' +
+          '<option value="pickup">Pickup</option>' +
+        '</select></div>' +
+        '<div class="form-group"><label>Order Notes (optional)</label><textarea name="notes" rows="2"></textarea></div>' +
+        '<div class="checkout-btns">' +
+          '<button type="button" class="back-btn" id="cart-back-btn">Back</button>' +
+          '<button type="submit" class="place-btn">Place Order</button>' +
+        '</div>' +
+      '</form>';
+
+    var checkoutBtn = $('#cart-checkout-btn');
+    var form = $('#checkout-form');
+    var backBtn = $('#cart-back-btn');
+    if (checkoutBtn) {
+      checkoutBtn.addEventListener('click', function () {
+        checkoutBtn.style.display = 'none';
+        form.style.display = 'flex';
+      });
+    }
+    if (backBtn) {
+      backBtn.addEventListener('click', function () {
+        form.style.display = 'none';
+        checkoutBtn.style.display = '';
+      });
+    }
+    initCheckoutForm(form, footer);
+  }
+
   function renderCart() {
     var cart = getCart();
     var body = $('#cart-body');
     var footer = $('#cart-footer');
     if (!body) return;
+    updateBadge();
     if (!cart.length) {
       body.innerHTML =
         '<div class="cart-empty">' +
@@ -109,7 +155,10 @@
       if (footer) footer.style.display = 'none';
       return;
     }
-    if (footer) footer.style.display = 'block';
+    if (footer) {
+      footer.style.display = 'block';
+      buildCartFooter(footer, cart);
+    }
     body.innerHTML = cart.map(function (item) {
       var prod = shopProducts.find(function (p) { return String(p.id) === String(item.id); });
       var maxStock = prod ? prod.stock : 99;
@@ -127,9 +176,6 @@
         '<button class="cart-item-remove" data-id="' + item.id + '"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg></button>' +
       '</div>';
     }).join('');
-
-    var subtotal = cart.reduce(function (s, i) { return s + (i.price * i.qty); }, 0);
-    $('#cart-subtotal').textContent = 'GH¢ ' + subtotal.toFixed(2);
   }
 
   function initCart() {
@@ -188,6 +234,12 @@
       }
       saveCart(cart);
       showToast(prod.name + ' added to cart');
+      btn.classList.add('added');
+      btn.textContent = 'Added ✓';
+      setTimeout(function () {
+        btn.classList.remove('added');
+        btn.textContent = 'Add to Cart';
+      }, 1200);
     });
   }
 
@@ -216,10 +268,8 @@
   }
 
   /* ── Checkout Form ── */
-  function initCheckout() {
-    var form = $('#checkout-form');
+  function initCheckoutForm(form, footer) {
     if (!form) return;
-    var footer = $('#cart-footer');
 
     form.addEventListener('submit', function (e) {
       e.preventDefault();
@@ -232,14 +282,14 @@
 
       API.post('/api/orders', {
         customer: {
-          name: form.name.value.trim(),
-          email: form.email.value.trim(),
-          phone: form.phone.value.trim(),
-          address: form.address.value.trim()
+          name: form.elements.name.value.trim(),
+          email: form.elements.email.value.trim(),
+          phone: form.elements.phone.value.trim(),
+          address: form.elements.address.value.trim()
         },
         items: cart.map(function (i) { return { name: i.name, quantity: i.qty, price: i.price }; }),
-        deliveryType: form.deliveryType.value,
-        notes: form.notes.value.trim()
+        deliveryType: form.elements.deliveryType.value,
+        notes: form.elements.notes.value.trim()
       }).then(function (order) {
         saveCart([]);
         var body = $('#cart-body');
@@ -254,19 +304,57 @@
             '<p style="margin-bottom:4px">Your order <strong>' + order.id + '</strong> has been received.</p>' +
             '<p>Choose payment to complete your order.</p>' +
             '<button id="pay-now-btn" class="btn btn-primary" style="margin-top:16px">Pay Now — GH¢ ' + order.total.toFixed(2) + '</button>' +
-            '<p style="margin-top:12px;font-size:13px;color:var(--gray-400)">Pay with Mobile Money or Card via Hubtel</p>' +
+            '<p style="margin-top:12px;font-size:13px;color:var(--gray-400)">Demo mode — simulated payment</p>' +
           '</div>';
         if (footer) footer.style.display = 'none';
 
         $('#pay-now-btn').addEventListener('click', function () {
           this.disabled = true;
-          this.textContent = 'Redirecting...';
+          this.textContent = 'Processing...';
           API.post('/api/payments/initialize', {
             orderId: order.id,
-            email: form.email.value.trim(),
+            email: form.elements.email.value.trim(),
             amount: order.total
           }).then(function (pay) {
-            window.location.href = pay.authorization_url;
+            if (pay.demo) {
+              body.innerHTML =
+                '<div class="cart-empty">' +
+                  '<div class="cart-empty-icon" style="background:var(--amber-100)">' +
+                    '<svg viewBox="0 0 24 24" fill="none" stroke="var(--amber-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px">' +
+                      '<path d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>' +
+                    '</svg>' +
+                  '</div>' +
+                  '<h3>Demo Payment</h3>' +
+                  '<p style="margin-bottom:4px">Order <strong>' + pay.reference + '</strong></p>' +
+                  '<p style="font-size:14px;color:var(--gray-500)">Click below to simulate a successful payment.</p>' +
+                  '<button id="demo-confirm-btn" class="btn btn-primary" style="margin-top:16px">Confirm Demo Payment</button>' +
+                '</div>';
+              if (footer) footer.style.display = 'none';
+              $('#demo-confirm-btn').addEventListener('click', function () {
+                this.disabled = true;
+                this.textContent = 'Confirming...';
+                API.post('/api/payments/demo-confirm', { orderId: pay.reference }).then(function () {
+                  body.innerHTML =
+                    '<div class="cart-empty">' +
+                      '<div class="cart-empty-icon" style="background:var(--green-100)">' +
+                        '<svg viewBox="0 0 24 24" fill="none" stroke="var(--green-600)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:36px;height:36px">' +
+                          '<path d="M4.5 12.75l6 6 9-13.5"/>' +
+                        '</svg>' +
+                      '</div>' +
+                      '<h3>Payment Successful!</h3>' +
+                      '<p>Order <strong>' + pay.reference + '</strong> has been paid and confirmed.</p>' +
+                      '<p style="font-size:13px;color:var(--gray-400)">We\'ll process your order shortly.</p>' +
+                    '</div>';
+                  showToast('Payment confirmed!');
+                }).catch(function () {
+                  showToast('Demo confirmation failed', 'error');
+                  this.disabled = false;
+                  this.textContent = 'Confirm Demo Payment';
+                });
+              });
+            } else {
+              window.location.href = pay.authorization_url;
+            }
           }).catch(function (err) {
             showToast(err.message || 'Payment failed', 'error');
             this.disabled = false;
@@ -286,25 +374,48 @@
      ══════════════════════════════════════════ */
   var productGrid = $('#product-grid');
   if (productGrid) {
-    API.get('/api/products').then(function (products) {
-      shopProducts = products;
-      renderShopGrid();
+    productGrid.innerHTML =
+      '<div class="shop-loading">' +
+        '<div class="shop-loading-spinner"></div>' +
+        '<p>Loading fresh produce...</p>' +
+      '</div>';
 
-      $$('.filter-pill').forEach(function (pill) {
-        pill.addEventListener('click', function () {
-          $$('.filter-pill').forEach(function (p) { p.classList.remove('active'); });
-          this.classList.add('active');
-          renderShopGrid();
+    function loadProducts(attempts) {
+      API.get('/api/products').then(function (products) {
+        shopProducts = products;
+        renderShopGrid();
+
+        $$('.filter-pill').forEach(function (pill) {
+          pill.addEventListener('click', function () {
+            $$('.filter-pill').forEach(function (p) { p.classList.remove('active'); });
+            this.classList.add('active');
+            renderShopGrid();
+          });
         });
+
+        var search = $('#search-input, #shop-search');
+        if (search) {
+          search.addEventListener('input', function () {
+            renderShopGrid();
+          });
+        }
+      }).catch(function () {
+        if (attempts > 0) {
+          setTimeout(function () { loadProducts(attempts - 1); }, 700);
+        } else {
+          productGrid.innerHTML =
+            '<div class="shop-error">' +
+              '<p>Couldn\'t load products. Please check the server connection.</p>' +
+              '<button class="btn btn-primary" id="shop-retry-btn" style="margin-top:12px">Retry</button>' +
+            '</div>';
+          $('#shop-retry-btn').addEventListener('click', function () {
+            location.reload();
+          });
+        }
       });
+    }
 
-      var search = $('#shop-search');
-      if (search) {
-        search.addEventListener('input', function () {
-          renderShopGrid();
-        });
-      }
-    });
+    loadProducts(3);
   }
 
   /* ══════════════════════════════════════════
@@ -334,10 +445,10 @@
     }
   })();
 
-  /* ── Init cart after products load ── */
+  /* ── Init cart ── */
   initCart();
-  initCheckout();
   updateBadge();
+  renderCart();
 
   /* ── Mobile / Sidebar ── */
   (function initNav() {

@@ -73,6 +73,21 @@ function renderActiveView() {
 /* ══════════════════════════════════════════
    DASHBOARD
    ══════════════════════════════════════════ */
+function chartHTML(days) {
+  if (!days || !days.length) return '<div style="text-align:center;padding:40px;color:var(--gray-400);font-size:13px">No revenue data yet</div>';
+  var W = 600, H = 200, PAD = 10, BAR_PAD = 4;
+  var maxVal = Math.max.apply(null, days.map(function (d) { return d.total; })) || 1;
+  var bw = (W - PAD * 2 - (days.length - 1) * BAR_PAD) / days.length;
+  var bars = days.map(function (d, i) {
+    var h = Math.max((d.total / maxVal) * (H - PAD * 2 - 22), 2);
+    var x = PAD + i * (bw + BAR_PAD);
+    var y = H - PAD - h;
+    var dayLabel = d.day.split('-').slice(1).join('/');
+    return '<g><rect x="' + x + '" y="' + y + '" width="' + bw + '" height="' + h + '" rx="4" fill="var(--green-500)" opacity="' + (d.total ? 1 : 0.15) + '"><title>' + d.day + ': GH¢ ' + Number(d.total).toFixed(2) + '</title></rect><text x="' + (x + bw / 2) + '" y="' + (H - PAD - 4) + '" text-anchor="middle" font-size="10" fill="var(--gray-400)">' + dayLabel + '</text></g>';
+  }).join('');
+  return '<div style="overflow-x:auto"><svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;min-width:420px" role="img" aria-label="Revenue by day">' + bars + '</svg></div>';
+}
+
 function renderDashboard() {
   var container = $('#view-dashboard');
   container.innerHTML = '<div style="text-align:center;padding:80px"><p>Loading dashboard...</p></div>';
@@ -87,7 +102,8 @@ function renderDashboard() {
         '<div class="admin-stat-card"><div class="admin-stat-value">' + d.unread_messages + '</div><div class="admin-stat-label">Unread Messages</div></div>' +
         '<div class="admin-stat-card"><div class="admin-stat-value">' + d.subscriber_count + '</div><div class="admin-stat-label">Subscribers</div></div>' +
       '</div>' +
-      (d.low_stock && d.low_stock.length ? '<div class="admin-card" style="margin-top:24px"><h3 class="admin-card-title">Low Stock Alert</h3>' + d.low_stock.map(function (p) { return '<div class="admin-low-stock-item"><span>' + escapeHtml(p.name) + '</span><span class="badge badge-red">' + p.stock + ' left</span></div>'; }).join('') + '</div>' : '') +
+      '<div class="admin-card" style="margin-top:24px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px"><h3 class="admin-card-title" style="margin:0">Revenue — Last 7 Days</h3><span style="font-size:12px;color:var(--gray-400)">paid orders</span></div>' + chartHTML(d.revenue_by_day || []) + '</div>' +
+      (d.low_stock && d.low_stock.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Low Stock Alert</h3>' + d.low_stock.map(function (p) { return '<div class="admin-low-stock-item"><span>' + escapeHtml(p.name) + '</span><span class="badge badge-red">' + p.stock + ' left</span></div>'; }).join('') + '</div>' : '') +
       (d.recent_orders && d.recent_orders.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Recent Orders</h3>' + d.recent_orders.map(function (o) { return '<div class="admin-recent-order"><span>' + o.id + '</span><span class="badge ' + (STATUS_COLORS[o.status] || 'badge-amber') + '">' + (STATUS_LABELS[o.status] || o.status) + '</span><span>GH¢ ' + Number(o.total).toFixed(2) + '</span></div>'; }).join('') + '</div>' : '');
   }).catch(function () {
     container.innerHTML = '<div class="admin-page-title"><h1>Dashboard</h1><p>Error loading data. Is the server running?</p></div>';
@@ -118,6 +134,7 @@ function renderOrders() {
             '<option value="all"' + (statusFilter === 'all' || !statusFilter ? ' selected' : '') + '>All statuses</option>' +
             Object.keys(STATUS_LABELS).map(function (s) { return '<option value="' + s + '"' + (s === statusFilter ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('') +
           '</select>' +
+          '<button id="orders-export-btn" class="admin-btn-outline" style="font-size:13px;padding:10px 16px;white-space:nowrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg> Export CSV</button>' +
         '</div>' +
         '<div style="font-size:13px;color:var(--gray-400);margin-bottom:12px">' + filtered.length + ' result' + (filtered.length !== 1 ? 's' : '') + '</div>' +
         (filtered.length ? '<div class="admin-order-list">' + filtered.map(function (o) {
@@ -149,6 +166,30 @@ function renderOrders() {
       });
       document.getElementById('orders-status-filter').addEventListener('change', function () {
         html(orders, document.getElementById('orders-search').value, this.value);
+      });
+      document.getElementById('orders-export-btn').addEventListener('click', function () {
+        var q = document.getElementById('orders-search').value;
+        var s = document.getElementById('orders-status-filter').value;
+        var rows = filtered.map(function (o) {
+          return [
+            o.id,
+            o.customer_name,
+            o.customer_email,
+            o.customer_phone,
+            o.total,
+            STATUS_LABELS[o.status] || o.status,
+            o.payment_status,
+            o.delivery_type,
+            new Date(o.createdAt).toISOString()
+          ].join(',');
+        });
+        var csv = 'data:text/csv;charset=utf-8,' + encodeURIComponent('ID,Customer,Email,Phone,Total (GHS),Status,Payment,Delivery,Created\n' + rows.join('\n'));
+        var a = document.createElement('a');
+        a.href = csv;
+        a.download = 'eden_tree_orders.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
       });
     };
 

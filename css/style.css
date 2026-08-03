@@ -1376,6 +1376,7 @@ h1, h2, h3, h4, h5, h6 {
   width: 420px;
   max-width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background: white;
   z-index: 301;
   transform: translateX(100%);
@@ -1573,7 +1574,9 @@ body.cart-open { overflow: hidden; }
   border-top: 1px solid var(--gray-100);
   padding: 24px 28px;
   flex-shrink: 0;
-  max-height: calc(100vh - 90px);
+  min-height: 0;
+  max-height: calc(100vh - 85px);
+  max-height: calc(100dvh - 85px);
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;

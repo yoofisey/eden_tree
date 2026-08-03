@@ -709,9 +709,30 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 /* ── Team ── */
+.team-lead {
+  background: white;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+  border: 1px solid var(--gray-100);
+  max-width: 460px;
+  margin: 0 auto 56px;
+  text-align: center;
+  transition: transform 0.4s cubic-bezier(.4,0,.2,1), box-shadow 0.4s cubic-bezier(.4,0,.2,1);
+}
+
+.team-lead:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.team-lead .team-info {
+  padding: 28px 32px 34px;
+}
+
 .team-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 24px;
 }
 

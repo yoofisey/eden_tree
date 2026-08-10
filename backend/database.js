@@ -111,13 +111,16 @@ async function insertAndGetId(db, sql, params) {
 }
 
 /* ── Schema: same tables, engine-specific id types + timestamp defaults ── */
+const idType = () => (USE_PG ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT');
+const nowExpr = () => (USE_PG ? 'now()' : "(datetime('now'))");
+
 function createSchemaStatements() {
-  const idType = USE_PG ? 'SERIAL PRIMARY KEY' : 'INTEGER PRIMARY KEY AUTOINCREMENT';
-  const nowExpr = USE_PG ? 'now()' : "(datetime('now'))";
+  const ID = idType();
+  const NOW = nowExpr();
 
   return [
     `CREATE TABLE IF NOT EXISTS products (
-      id ${idType},
+      id ${ID},
       name TEXT NOT NULL,
       category TEXT NOT NULL,
       price REAL NOT NULL,
@@ -127,8 +130,8 @@ function createSchemaStatements() {
       inStock INTEGER NOT NULL DEFAULT 1,
       stock INTEGER NOT NULL DEFAULT 0,
       minStock INTEGER NOT NULL DEFAULT 5,
-      createdAt TEXT NOT NULL DEFAULT ${nowExpr},
-      updatedAt TEXT NOT NULL DEFAULT ${nowExpr}
+      createdAt TEXT NOT NULL DEFAULT ${NOW},
+      updatedAt TEXT NOT NULL DEFAULT ${NOW}
     )`,
 
     `CREATE TABLE IF NOT EXISTS orders (
@@ -143,11 +146,11 @@ function createSchemaStatements() {
       notes TEXT NOT NULL DEFAULT '',
       payment_reference TEXT DEFAULT '',
       payment_status TEXT DEFAULT 'unpaid',
-      createdAt TEXT NOT NULL DEFAULT ${nowExpr}
+      createdAt TEXT NOT NULL DEFAULT ${NOW}
     )`,
 
     `CREATE TABLE IF NOT EXISTS order_items (
-      id ${idType},
+      id ${ID},
       order_id TEXT NOT NULL,
       product_name TEXT NOT NULL,
       quantity INTEGER NOT NULL,
@@ -156,36 +159,99 @@ function createSchemaStatements() {
     )`,
 
     `CREATE TABLE IF NOT EXISTS messages (
-      id ${idType},
+      id ${ID},
       name TEXT NOT NULL,
       email TEXT NOT NULL,
       phone TEXT NOT NULL DEFAULT '',
       subject TEXT NOT NULL DEFAULT '',
       message TEXT NOT NULL,
       is_read INTEGER NOT NULL DEFAULT 0,
-      createdAt TEXT NOT NULL DEFAULT ${nowExpr}
+      createdAt TEXT NOT NULL DEFAULT ${NOW}
     )`,
 
     `CREATE TABLE IF NOT EXISTS newsletter_subscribers (
-      id ${idType},
+      id ${ID},
       email TEXT NOT NULL UNIQUE,
-      createdAt TEXT NOT NULL DEFAULT ${nowExpr}
+      createdAt TEXT NOT NULL DEFAULT ${NOW}
     )`,
 
     `CREATE TABLE IF NOT EXISTS broadcasts (
       id TEXT PRIMARY KEY,
       title TEXT NOT NULL,
       message TEXT NOT NULL,
-      createdAt TEXT NOT NULL DEFAULT ${nowExpr}
+      createdAt TEXT NOT NULL DEFAULT ${NOW}
     )`,
 
     `CREATE TABLE IF NOT EXISTS users (
-      id ${idType},
+      id ${ID},
       username TEXT NOT NULL UNIQUE,
       password_hash TEXT NOT NULL,
-      createdAt TEXT NOT NULL DEFAULT ${nowExpr}
+      role TEXT NOT NULL DEFAULT 'owner',
+      createdAt TEXT NOT NULL DEFAULT ${NOW}
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS promo_codes (
+      id ${ID},
+      code TEXT NOT NULL UNIQUE,
+      discount_type TEXT NOT NULL DEFAULT 'percent',
+      discount_value REAL NOT NULL,
+      min_order REAL NOT NULL DEFAULT 0,
+      usage_limit INTEGER NOT NULL DEFAULT 0,
+      used_count INTEGER NOT NULL DEFAULT 0,
+      expires_at TEXT NOT NULL DEFAULT '',
+      active INTEGER NOT NULL DEFAULT 1,
+      createdAt TEXT NOT NULL DEFAULT ${NOW}
     )`,
   ];
+}
+
+/* Does a column exist on a table? (works on both engines) */
+async function hasColumn(db, table, column) {
+  if (db.isPg) {
+    const res = await db.query(
+      'SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name = $2',
+      [table, column]
+    );
+    return res.rows.length > 0;
+  }
+  const stmt = db.prepare(`PRAGMA table_info(${table})`);
+  let found = false;
+  while (stmt.step()) {
+    if (stmt.getAsObject().name === column) { found = true; break; }
+  }
+  stmt.free();
+  return found;
+}
+
+/* Lightweight migrations for databases created before these columns existed */
+async function migrate(db) {
+  if (!(await hasColumn(db, 'users', 'role'))) {
+    await run(db, `ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'owner'`);
+    console.log('→ migrated: users.role');
+  }
+  for (const col of [
+    ['discount', "REAL NOT NULL DEFAULT 0"],
+    ['promo_code', "TEXT NOT NULL DEFAULT ''"],
+    ['refunded_amount', "REAL NOT NULL DEFAULT 0"],
+    ['refunded_at', "TEXT"],
+  ]) {
+    if (!(await hasColumn(db, 'orders', col[0]))) {
+      await run(db, `ALTER TABLE orders ADD COLUMN ${col[0]} ${col[1]}`);
+      console.log(`→ migrated: orders.${col[0]}`);
+    }
+  }
+  await run(db, `CREATE TABLE IF NOT EXISTS promo_codes (
+    id ${idType()},
+    code TEXT NOT NULL UNIQUE,
+    discount_type TEXT NOT NULL DEFAULT 'percent',
+    discount_value REAL NOT NULL,
+    min_order REAL NOT NULL DEFAULT 0,
+    usage_limit INTEGER NOT NULL DEFAULT 0,
+    used_count INTEGER NOT NULL DEFAULT 0,
+    expires_at TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL DEFAULT ${nowExpr()}
+  )`);
 }
 
 const SEED_IMAGES = [
@@ -227,6 +293,8 @@ async function initDatabase() {
   for (const sql of createSchemaStatements()) {
     await run(db, sql);
   }
+
+  await migrate(db);
 
   const existing = await queryOne(db, 'SELECT id FROM users WHERE username = ?', ['admin']);
   if (!existing) {

@@ -68,6 +68,27 @@ function renderActiveView() {
   else if (activeView === 'products') renderProducts();
   else if (activeView === 'messages') renderMessages();
   else if (activeView === 'subscribers') renderSubscribers();
+  else if (activeView === 'promos') renderPromos();
+  else if (activeView === 'users') renderUsers();
+}
+
+var ROLE_LABELS = { owner: 'Owner', admin: 'Admin', manager: 'Manager' };
+
+function getRole() {
+  try { return sessionStorage.getItem('eden_admin_role') || ''; } catch (e) { return ''; }
+}
+
+function canAccess(roles) {
+  if (!roles || !roles.length) return true;
+  return roles.indexOf(getRole()) !== -1;
+}
+
+function requireView(viewName, roles) {
+  if (roles && roles.length && !canAccess(roles)) {
+    switchView('dashboard');
+    return false;
+  }
+  return true;
 }
 
 /* ══════════════════════════════════════════
@@ -138,6 +159,7 @@ function renderOrders() {
         '</div>' +
         '<div style="font-size:13px;color:var(--gray-400);margin-bottom:12px">' + filtered.length + ' result' + (filtered.length !== 1 ? 's' : '') + '</div>' +
         (filtered.length ? '<div class="admin-order-list">' + filtered.map(function (o) {
+          var canRefund = canAccess(['owner', 'admin']) && o.payment_status === 'paid';
           return '<div class="admin-order-card">' +
             '<div class="admin-order-header">' +
               '<span class="admin-order-id">' + escapeHtml(o.id) + '</span>' +
@@ -145,11 +167,14 @@ function renderOrders() {
                 '<select class="admin-status-select" data-order-id="' + o.id + '" style="background:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '20;color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + ';border-color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '40">' +
                   Object.keys(STATUS_LABELS).map(function (s) { return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('') +
                 '</select>' +
+                (canRefund ? '<button class="admin-btn-outline refund-order-btn" data-id="' + o.id + '" data-total="' + o.total + '" style="font-size:12px;padding:6px 10px;color:#dc2626;border-color:#dc2626">Refund</button>' : '') +
                 '<button class="admin-icon-btn delete-order-btn" data-id="' + o.id + '" title="Delete order"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>' +
               '</div>' +
             '</div>' +
             '<div class="admin-order-customer"><strong>' + escapeHtml(o.customer_name) + '</strong> &lt;' + escapeHtml(o.customer_email) + '&gt;' + (o.customer_phone ? ' &mdash; ' + escapeHtml(o.customer_phone) : '') + '</div>' +
             '<div class="admin-order-meta">' + new Date(o.createdAt).toLocaleDateString() + ' &middot; GH¢ ' + Number(o.total).toFixed(2) + ' &middot; ' + o.delivery_type + ' &middot; Payment: ' + o.payment_status + '</div>' +
+            (o.discount > 0 ? '<div class="admin-order-meta" style="color:var(--green-600)">Discount: -GH¢ ' + Number(o.discount).toFixed(2) + (o.promo_code ? ' (code ' + escapeHtml(o.promo_code) + ')' : '') + '</div>' : '') +
+            (o.refunded_amount > 0 ? '<div class="admin-order-meta" style="color:#dc2626">Refunded: GH¢ ' + Number(o.refunded_amount).toFixed(2) + (o.refunded_at ? ' on ' + new Date(o.refunded_at).toLocaleDateString() : '') + '</div>' : '') +
             (o.notes ? '<div class="admin-order-notes">' + escapeHtml(o.notes) + '</div>' : '') +
             (o.items && o.items.length ? '<div class="admin-order-items">' + o.items.map(function (i) { return '<div class="admin-order-item"><span>' + escapeHtml(i.product_name) + '</span><span>&times;' + i.quantity + '</span><span>GH¢ ' + Number(i.price * i.quantity).toFixed(2) + '</span></div>'; }).join('') + '</div>' : '') +
           '</div>';
@@ -171,6 +196,21 @@ function renderOrders() {
             showToast('Order deleted');
             renderOrders();
           }).catch(function (err) { showToast(err.message || 'Delete failed', 'error'); });
+        });
+      });
+
+      container.querySelectorAll('.refund-order-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var total = Number(btn.dataset.total || 0);
+          var entered = prompt('Refund order ' + btn.dataset.id + '?\nEnter amount to refund (GH¢). Max: ' + total.toFixed(2), total.toFixed(2));
+          if (entered === null) return;
+          var amount = Math.max(0, Math.min(Number(entered) || 0, total));
+          if (amount <= 0) { showToast('Enter a valid refund amount', 'error'); return; }
+          if (!confirm('Confirm refund of GH¢ ' + amount.toFixed(2) + ' for ' + btn.dataset.id + '?')) return;
+          API.put('/api/admin/orders/' + btn.dataset.id + '/refund', { amount: amount }).then(function () {
+            showToast('Refund recorded');
+            renderOrders();
+          }).catch(function (err) { showToast(err.message || 'Refund failed', 'error'); });
         });
       });
 
@@ -545,6 +585,237 @@ function renderSubscribers() {
 }
 
 /* ══════════════════════════════════════════
+   PROMO CODES
+   ══════════════════════════════════════════ */
+function promoModal(promo) {
+  var isEdit = !!promo;
+  var overlay = document.createElement('div');
+  overlay.className = 'admin-modal-overlay';
+  overlay.innerHTML =
+    '<div class="admin-modal">' +
+      '<div class="admin-modal-header">' +
+        '<h3>' + (isEdit ? 'Edit Promo Code' : 'Add Promo Code') + '</h3>' +
+        '<button class="admin-modal-close" data-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>' +
+      '</div>' +
+      '<div class="admin-modal-body">' +
+        '<form class="admin-form" data-promo-form>' +
+          '<div class="admin-form-group"><label>Code</label><input type="text" data-code value="' + (isEdit ? escapeHtml(promo.code) : '') + '" placeholder="e.g. WELCOME10" required style="text-transform:uppercase"></div>' +
+          '<div class="admin-form-row">' +
+            '<div class="admin-form-group"><label>Type</label><select data-type><option value="percent"' + (isEdit && promo.discount_type === 'percent' ? ' selected' : '') + '>Percent (%)</option><option value="fixed"' + (isEdit && promo.discount_type === 'fixed' ? ' selected' : '') + '>Fixed (GH¢)</option></select></div>' +
+            '<div class="admin-form-group"><label>Value</label><input type="number" data-value step="0.01" min="0.01" value="' + (isEdit ? promo.discount_value : '') + '" required></div>' +
+            '<div class="admin-form-group"><label>Min order (GH¢)</label><input type="number" data-min step="0.01" min="0" value="' + (isEdit ? promo.min_order : '') + '"></div>' +
+          '</div>' +
+          '<div class="admin-form-row">' +
+            '<div class="admin-form-group"><label>Usage limit (0 = unlimited)</label><input type="number" data-limit min="0" value="' + (isEdit ? promo.usage_limit : '') + '"></div>' +
+            '<div class="admin-form-group"><label>Expires (optional)</label><input type="date" data-expires value="' + (isEdit && promo.expires_at ? String(promo.expires_at).slice(0, 10) : '') + '"></div>' +
+          '</div>' +
+          '<div class="admin-form-group" style="flex-direction:row;align-items:center;gap:10px"><input type="checkbox" data-active id="promo-active" style="width:auto"' + ((!isEdit || promo.active) ? ' checked' : '') + '><label for="promo-active" style="margin:0">Active</label></div>' +
+          '<button type="submit" class="admin-btn-primary" style="align-self:flex-start">' + (isEdit ? 'Update Promo Code' : 'Add Promo Code') + '</button>' +
+        '</form>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  requestAnimationFrame(function () { overlay.classList.add('open'); });
+
+  overlay.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { overlay.remove(); }); });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('[data-promo-form]').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var payload = {
+      code: overlay.querySelector('[data-code]').value.trim(),
+      discount_type: overlay.querySelector('[data-type]').value,
+      discount_value: Number(overlay.querySelector('[data-value]').value),
+      min_order: Number(overlay.querySelector('[data-min]').value) || 0,
+      usage_limit: Number(overlay.querySelector('[data-limit]').value) || 0,
+      expires_at: overlay.querySelector('[data-expires]').value ? new Date(overlay.querySelector('[data-expires]').value + 'T23:59:59').toISOString() : '',
+      active: overlay.querySelector('[data-active]').checked
+    };
+    var req = isEdit
+      ? API.put('/api/admin/promos/' + promo.id, payload)
+      : API.post('/api/admin/promos', payload);
+    req.then(function () {
+      showToast(isEdit ? 'Promo code updated' : 'Promo code added');
+      overlay.remove();
+      renderPromos();
+    }).catch(function (err) { showToast(err.message || 'Save failed', 'error'); });
+  });
+}
+
+function renderPromos() {
+  var container = $('#view-promos');
+  if (!requireView('promos', ['owner', 'admin'])) return;
+  container.innerHTML = '<div style="text-align:center;padding:80px"><p>Loading promo codes...</p></div>';
+
+  API.get('/api/admin/promos').then(function (promos) {
+    container.innerHTML =
+      '<div class="admin-page-title header-row">' +
+        '<div><h1>Promo Codes</h1><p>' + promos.length + ' codes</p></div>' +
+        '<button class="admin-btn-primary" id="add-promo-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path stroke-linecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg> Add Promo Code</button>' +
+      '</div>' +
+      (promos.length ? '<div class="admin-promo-list">' + promos.map(function (p) {
+        var expired = p.expires_at && new Date(p.expires_at) < new Date();
+        var usedUp = p.usage_limit > 0 && p.used_count >= p.usage_limit;
+        var value = p.discount_type === 'percent' ? p.discount_value + '% off' : 'GH¢ ' + Number(p.discount_value).toFixed(2) + ' off';
+        return '<div class="admin-promo-card' + (!p.active || expired || usedUp ? ' disabled' : '') + '">' +
+          '<div class="admin-promo-top">' +
+            '<div><div class="admin-promo-code">' + escapeHtml(p.code) + '</div><div class="admin-promo-desc">' + value + (p.min_order > 0 ? ' &middot; min GH¢ ' + Number(p.min_order).toFixed(2) : '') + '</div></div>' +
+            '<span class="badge ' + (expired || usedUp ? 'badge-red' : p.active ? 'badge-green' : 'badge-amber') + '">' + (expired ? 'Expired' : usedUp ? 'Used up' : p.active ? 'Active' : 'Disabled') + '</span>' +
+          '</div>' +
+          '<div class="admin-promo-bottom">' +
+            '<span class="admin-promo-usage">Used ' + p.used_count + (p.usage_limit > 0 ? ' / ' + p.usage_limit : '') + (p.expires_at ? ' &middot; expires ' + new Date(p.expires_at).toLocaleDateString() : '') + '</span>' +
+            '<div class="admin-product-actions">' +
+              '<button class="admin-btn-outline toggle-promo-btn" data-id="' + p.id + '" style="font-size:12px;padding:5px 10px">' + (p.active ? 'Disable' : 'Enable') + '</button>' +
+              '<button class="admin-btn-outline edit-promo-btn" data-id="' + p.id + '" style="font-size:12px;padding:5px 10px">Edit</button>' +
+              '<button class="admin-icon-btn delete-promo-btn" data-id="' + p.id + '" title="Delete promo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }).join('') + '</div>' : '<div style="text-align:center;padding:60px;color:var(--gray-400)">No promo codes yet — add one to start offering discounts.</div>');
+
+    document.getElementById('add-promo-btn').addEventListener('click', function () { promoModal(null); });
+    container.querySelectorAll('.edit-promo-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var promo = promos.find(function (p) { return String(p.id) === String(btn.dataset.id); });
+        if (promo) promoModal(promo);
+      });
+    });
+    container.querySelectorAll('.toggle-promo-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var promo = promos.find(function (p) { return String(p.id) === String(btn.dataset.id); });
+        if (!promo) return;
+        API.put('/api/admin/promos/' + promo.id, { active: !promo.active }).then(function () {
+          showToast(promo.active ? 'Promo disabled' : 'Promo enabled');
+          renderPromos();
+        }).catch(function (err) { showToast(err.message || 'Update failed', 'error'); });
+      });
+    });
+    container.querySelectorAll('.delete-promo-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Delete this promo code?')) return;
+        API.del('/api/admin/promos/' + btn.dataset.id).then(function () {
+          showToast('Promo code deleted');
+          renderPromos();
+        }).catch(function (err) { showToast(err.message || 'Delete failed', 'error'); });
+      });
+    });
+  }).catch(function () {
+    container.innerHTML = '<div class="admin-page-title"><h1>Promo Codes</h1><p>Error loading promo codes</p></div>';
+  });
+}
+
+/* ══════════════════════════════════════════
+   ADMIN USERS (owner only)
+   ══════════════════════════════════════════ */
+function renderUsers() {
+  var container = $('#view-users');
+  if (!requireView('users', ['owner'])) return;
+  container.innerHTML = '<div style="text-align:center;padding:80px"><p>Loading admin users...</p></div>';
+
+  API.get('/api/admin/users').then(function (users) {
+    container.innerHTML =
+      '<div class="admin-page-title header-row">' +
+        '<div><h1>Admin Users</h1><p>' + users.length + ' staff accounts</p></div>' +
+        '<button class="admin-btn-primary" id="add-user-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path stroke-linecap="round" d="M12 4.5v15m7.5-7.5h-15"/></svg> Add User</button>' +
+      '</div>' +
+      '<div class="admin-users-table-wrap">' +
+        '<table class="admin-users-table">' +
+          '<thead><tr><th>Username</th><th>Role</th><th>Created</th><th style="text-align:right">Actions</th></tr></thead>' +
+          '<tbody>' + users.map(function (u) {
+            var myUsername = (function () { try { return sessionStorage.getItem('eden_admin_username') || ''; } catch (e) { return ''; } })();
+            var isSelf = String(u.username).toLowerCase() === String(myUsername).toLowerCase();
+            return '<tr>' +
+              '<td><strong>' + escapeHtml(u.username) + '</strong>' + (isSelf ? ' <span class="badge badge-blue">you</span>' : '') + '</td>' +
+              '<td><select class="user-role-select" data-id="' + u.id + '" data-role="' + u.role + '">' +
+                ['owner', 'admin', 'manager'].map(function (r) { return '<option value="' + r + '"' + (r === u.role ? ' selected' : '') + '>' + ROLE_LABELS[r] + '</option>'; }).join('') +
+              '</select></td>' +
+              '<td>' + new Date(u.createdAt).toLocaleDateString() + '</td>' +
+              '<td style="text-align:right"><div class="admin-product-actions" style="justify-content:flex-end">' +
+                '<button class="admin-btn-outline reset-pw-btn" data-id="' + u.id + '" data-name="' + escapeHtml(u.username) + '" style="font-size:12px;padding:5px 10px">Reset Password</button>' +
+                '<button class="admin-icon-btn delete-user-btn" data-id="' + u.id + '" data-role="' + u.role + '" title="Delete user"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:15px;height:15px"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>' +
+              '</div></td>' +
+            '</tr>';
+          }).join('') + '</tbody>' +
+        '</table>' +
+      '</div>';
+
+    document.getElementById('add-user-btn').addEventListener('click', function () { showUserModal(); });
+
+    container.querySelectorAll('.user-role-select').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        API.put('/api/admin/users/' + sel.dataset.id, { role: sel.value }).then(function () {
+          showToast('Role updated');
+          renderUsers();
+        }).catch(function (err) { showToast(err.message || 'Update failed', 'error'); renderUsers(); });
+      });
+    });
+
+    container.querySelectorAll('.reset-pw-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var pw = prompt('Enter a new password for "' + btn.dataset.name + '" (min 6 characters):');
+        if (pw === null) return;
+        if (String(pw).length < 6) { showToast('Password must be at least 6 characters', 'error'); return; }
+        API.put('/api/admin/users/' + btn.dataset.id, { password: pw }).then(function () {
+          showToast('Password reset');
+        }).catch(function (err) { showToast(err.message || 'Reset failed', 'error'); });
+      });
+    });
+
+    container.querySelectorAll('.delete-user-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Delete this user account?')) return;
+        API.del('/api/admin/users/' + btn.dataset.id).then(function () {
+          showToast('User deleted');
+          renderUsers();
+        }).catch(function (err) { showToast(err.message || 'Delete failed', 'error'); });
+      });
+    });
+  }).catch(function () {
+    container.innerHTML = '<div class="admin-page-title"><h1>Admin Users</h1><p>Error loading users</p></div>';
+  });
+}
+
+function showUserModal() {
+  var overlay = document.createElement('div');
+  overlay.className = 'admin-modal-overlay';
+  overlay.innerHTML =
+    '<div class="admin-modal">' +
+      '<div class="admin-modal-header">' +
+        '<h3>Add Admin User</h3>' +
+        '<button class="admin-modal-close" data-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/></svg></button>' +
+      '</div>' +
+      '<div class="admin-modal-body">' +
+        '<form class="admin-form" data-user-form>' +
+          '<div class="admin-form-group"><label>Username</label><input type="text" data-username required placeholder="e.g. abena"></div>' +
+          '<div class="admin-form-group"><label>Password</label><input type="password" data-password required minlength="6" placeholder="Min 6 characters"></div>' +
+          '<div class="admin-form-group"><label>Role</label><select data-role><option value="manager">Manager</option><option value="admin">Admin</option><option value="owner">Owner</option></select></div>' +
+          '<div style="font-size:12px;color:var(--gray-400);margin:-4px 0 4px">Managers manage orders &amp; messages. Admins also manage products &amp; promo codes. Owners have full access.</div>' +
+          '<button type="submit" class="admin-btn-primary" style="align-self:flex-start">Create User</button>' +
+        '</form>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(overlay);
+  requestAnimationFrame(function () { overlay.classList.add('open'); });
+
+  overlay.querySelectorAll('[data-close]').forEach(function (b) { b.addEventListener('click', function () { overlay.remove(); }); });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelector('[data-user-form]').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var payload = {
+      username: overlay.querySelector('[data-username]').value.trim(),
+      password: overlay.querySelector('[data-password]').value,
+      role: overlay.querySelector('[data-role]').value
+    };
+    API.post('/api/admin/users', payload).then(function () {
+      showToast('User created');
+      overlay.remove();
+      renderUsers();
+    }).catch(function (err) { showToast(err.message || 'Create failed', 'error'); });
+  });
+}
+
+/* ══════════════════════════════════════════
    AUTH
    ══════════════════════════════════════════ */
 function isLoggedIn() {
@@ -561,8 +832,30 @@ function hideLogin() {
 }
 
 function doLogout() {
-  try { sessionStorage.removeItem('eden_admin_token'); sessionStorage.removeItem('eden_admin_username'); } catch (e) { /* ignore */ }
+  try { sessionStorage.removeItem('eden_admin_token'); sessionStorage.removeItem('eden_admin_username'); sessionStorage.removeItem('eden_admin_role'); } catch (e) { /* ignore */ }
   showLogin();
+}
+
+function applyRoleUI() {
+  var role = getRole();
+  var allowed = ['dashboard', 'orders', 'messages', 'subscribers'];
+  if (role === 'owner' || role === 'admin') allowed.push('products', 'promos');
+  if (role === 'owner') allowed.push('users');
+
+  $$('.admin-nav-item[data-view]').forEach(function (item) {
+    var view = item.getAttribute('data-view');
+    item.style.display = allowed.indexOf(view) === -1 ? 'none' : '';
+  });
+
+  var userInfo = $('#admin-user-info');
+  if (userInfo) {
+    var nameEl = userInfo.querySelector('.name');
+    var roleEl = userInfo.querySelector('.role');
+    var uname = '';
+    try { uname = sessionStorage.getItem('eden_admin_username') || ''; } catch (e) { /* ignore */ }
+    if (nameEl) nameEl.textContent = uname || 'Admin';
+    if (roleEl) roleEl.textContent = ROLE_LABELS[role] || role || 'Staff';
+  }
 }
 
 function initAdmin() {
@@ -571,8 +864,16 @@ function initAdmin() {
     $('#admin-sidebar').classList.toggle('open');
   });
 
+  applyRoleUI();
+
   function navigateToHash() {
     var view = window.location.hash.replace('#', '') || 'dashboard';
+    var roles = {
+      products: ['owner', 'admin'],
+      promos: ['owner', 'admin'],
+      users: ['owner']
+    };
+    if (roles[view] && !canAccess(roles[view])) view = 'dashboard';
     switchView(view);
   }
 
@@ -588,9 +889,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   $('#login-form').addEventListener('submit', function (e) {
     e.preventDefault();
+    var username = $('#login-username').value.trim();
     var pw = $('#login-password').value;
-    API.login('admin', pw).then(function (res) {
-      try { sessionStorage.setItem('eden_admin_token', res.token); sessionStorage.setItem('eden_admin_username', res.username || 'admin'); } catch (e) { /* ignore */ }
+    API.login(username, pw).then(function (res) {
+      try {
+        sessionStorage.setItem('eden_admin_token', res.token);
+        sessionStorage.setItem('eden_admin_username', res.username || username || 'admin');
+        sessionStorage.setItem('eden_admin_role', res.role || 'owner');
+      } catch (err) { /* ignore */ }
       hideLogin();
       $('#login-error').style.display = 'none';
       $('#login-password').value = '';

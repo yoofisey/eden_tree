@@ -45,11 +45,49 @@
     if (countEl) countEl.textContent = '(' + count + ' item' + (count !== 1 ? 's' : '') + ')';
   }
 
-  function updateCartSubtotal() {
-    var el = $('#cart-subtotal');
-    if (!el) return;
-    var subtotal = getCart().reduce(function (s, i) { return s + (i.price * i.qty); }, 0);
-    el.textContent = 'GH¢ ' + subtotal.toFixed(2);
+  var appliedPromo = null; /* { code, discount } */
+
+  function cartSubtotal() {
+    return getCart().reduce(function (s, i) { return s + (i.price * i.qty); }, 0);
+  }
+
+  function updateCartTotals() {
+    var subtotal = cartSubtotal();
+    var discount = appliedPromo ? appliedPromo.discount : 0;
+    var total = Math.max(0, subtotal - discount);
+    var subEl = $('#cart-subtotal');
+    var discRow = $('#cart-discount-row');
+    var grandRow = $('#cart-grand-row');
+    if (subEl) subEl.textContent = 'GH¢ ' + subtotal.toFixed(2);
+    if (discRow) {
+      discRow.style.display = discount > 0 ? 'flex' : 'none';
+      discRow.querySelector('span').textContent = 'Discount (' + appliedPromo.code + ')';
+      discRow.querySelector('strong').textContent = '-GH¢ ' + discount.toFixed(2);
+    }
+    if (grandRow) {
+      grandRow.style.display = discount > 0 ? 'flex' : 'none';
+      var totalEl = $('#cart-grand-total');
+      if (totalEl) totalEl.textContent = 'GH¢ ' + total.toFixed(2);
+    }
+  }
+
+  function refreshPromo(silent) {
+    if (!appliedPromo) { updateCartTotals(); return; }
+    API.post('/api/promos/validate', { code: appliedPromo.code, subtotal: cartSubtotal() }).then(function (r) {
+      var msg = $('#promo-msg');
+      if (r && r.valid) {
+        appliedPromo.discount = r.discount;
+      } else {
+        appliedPromo = null;
+        if (msg) {
+          msg.style.display = 'block';
+          msg.textContent = r && r.error ? r.error : 'Promo code no longer applies';
+          msg.className = 'promo-msg error';
+        }
+        if (!silent) showToast('Promo code removed', 'info');
+      }
+      updateCartTotals();
+    }).catch(function () { /* keep current display */ });
   }
 
   var shopProducts = [];
@@ -105,11 +143,26 @@
 
   /* ── Cart Drawer ── */
   function buildCartFooter(footer, cart) {
-    var subtotal = cart.reduce(function (s, i) { return s + (i.price * i.qty); }, 0);
+    var subtotal = cartSubtotal();
+    var discount = appliedPromo ? appliedPromo.discount : 0;
+    var total = Math.max(0, subtotal - discount);
     footer.innerHTML =
+      '<div class="promo-row">' +
+        '<input type="text" id="promo-input" placeholder="Promo code" autocomplete="off">' +
+        '<button type="button" id="promo-apply-btn">Apply</button>' +
+      '</div>' +
+      '<div class="promo-msg" id="promo-msg" style="display:none"></div>' +
       '<div class="cart-total">' +
         '<span>Subtotal</span>' +
         '<strong id="cart-subtotal">GH¢ ' + subtotal.toFixed(2) + '</strong>' +
+      '</div>' +
+      '<div class="cart-total cart-grand-row" id="cart-discount-row" style="display:none">' +
+        '<span>Discount</span>' +
+        '<strong>-GH¢ 0.00</strong>' +
+      '</div>' +
+      '<div class="cart-total cart-grand-row" id="cart-grand-row" style="display:none">' +
+        '<span>Total</span>' +
+        '<strong id="cart-grand-total">GH¢ ' + total.toFixed(2) + '</strong>' +
       '</div>' +
       '<button type="button" class="cart-checkout-btn" id="cart-checkout-btn">Proceed to Checkout</button>' +
       '<form id="checkout-form" class="checkout-form" style="display:none">' +
@@ -146,6 +199,33 @@
         checkoutBtn.style.display = '';
       });
     }
+
+    var promoBtn = $('#promo-apply-btn');
+    if (promoBtn) {
+      promoBtn.addEventListener('click', function () {
+        var input = $('#promo-input');
+        var code = input ? input.value.trim() : '';
+        if (!code) return;
+        promoBtn.disabled = true;
+        API.post('/api/promos/validate', { code: code, subtotal: cartSubtotal() }).then(function (r) {
+          var msg = $('#promo-msg');
+          if (msg) msg.style.display = 'block';
+          if (r && r.valid) {
+            appliedPromo = { code: r.code, discount: r.discount };
+            if (msg) { msg.textContent = 'Code applied: -GH¢ ' + Number(r.discount).toFixed(2); msg.className = 'promo-msg success'; }
+            if (input) input.value = r.code;
+          } else {
+            appliedPromo = null;
+            if (msg) { msg.textContent = r && r.error ? r.error : 'Invalid promo code'; msg.className = 'promo-msg error'; }
+          }
+          updateCartTotals();
+        }).catch(function (err) {
+          var msg = $('#promo-msg');
+          if (msg) { msg.style.display = 'block'; msg.textContent = err.message || 'Could not validate code'; msg.className = 'promo-msg error'; }
+        }).then(function () { promoBtn.disabled = false; });
+      });
+    }
+
     initCheckoutForm(form, footer);
   }
 
@@ -225,7 +305,8 @@
         if (decrBtn) decrBtn.disabled = item.qty <= 1;
         if (incrBtn) incrBtn.disabled = !prod2 || item.qty >= prod2.stock;
       }
-      updateCartSubtotal();
+      updateCartTotals();
+      refreshPromo(true);
     });
 
     document.addEventListener('click', function (e) {
@@ -239,7 +320,8 @@
       if (!cart.length) {
         renderCart();
       } else {
-        updateCartSubtotal();
+        updateCartTotals();
+        refreshPromo(true);
       }
     });
 
@@ -314,9 +396,11 @@
         },
         items: cart.map(function (i) { return { name: i.name, quantity: i.qty, price: i.price }; }),
         deliveryType: form.elements.deliveryType.value,
-        notes: form.elements.notes.value.trim()
+        notes: form.elements.notes.value.trim(),
+        promoCode: appliedPromo ? appliedPromo.code : ''
       }).then(function (order) {
         saveCart([]);
+        appliedPromo = null;
         var body = $('#cart-body');
         body.innerHTML =
           '<div class="cart-empty">' +
@@ -327,6 +411,7 @@
             '</div>' +
             '<h3>Order Placed!</h3>' +
             '<p style="margin-bottom:4px">Your order <strong>' + order.id + '</strong> has been received.</p>' +
+            (order.discount > 0 ? '<p style="margin-bottom:4px">Discount applied: <strong>-GH¢ ' + Number(order.discount).toFixed(2) + '</strong></p>' : '') +
             '<p>Choose payment to complete your order.</p>' +
             '<button id="pay-now-btn" class="btn btn-primary" style="margin-top:16px">Pay Now — GH¢ ' + order.total.toFixed(2) + '</button>' +
             '<p style="margin-top:12px;font-size:13px;color:var(--gray-400)">Demo mode — simulated payment</p>' +
@@ -424,6 +509,19 @@
             renderShopGrid();
           });
         }
+
+        /* Preselect a category from the URL (?cat=boxes) */
+        try {
+          var catParam = new URLSearchParams(window.location.search).get('cat');
+          if (catParam) {
+            var target = Array.prototype.find.call($$('.filter-pill'), function (p) { return p.dataset.filter === catParam; });
+            if (target) {
+              $$('.filter-pill').forEach(function (p) { p.classList.remove('active'); });
+              target.classList.add('active');
+              renderShopGrid();
+            }
+          }
+        } catch (e) { /* ignore */ }
       }).catch(function () {
         if (attempts > 0) {
           setTimeout(function () { loadProducts(attempts - 1); }, 700);
@@ -493,6 +591,20 @@
     }
   })();
 
+  (function initMobileMenu() {
+    var toggle = $('#mobile-toggle');
+    var menu = $('#mobile-menu');
+    var close = $('#mobile-close');
+    var overlay = $('#mobile-overlay');
+    if (!toggle || !menu) return;
+    function openMenu() { menu.classList.add('open'); if (overlay) overlay.classList.add('open'); }
+    function closeMenu() { menu.classList.remove('open'); if (overlay) overlay.classList.remove('open'); }
+    toggle.addEventListener('click', openMenu);
+    if (close) close.addEventListener('click', closeMenu);
+    if (overlay) overlay.addEventListener('click', closeMenu);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(); });
+  })();
+
   /* ── Scroll Reveal ── */
   (function initReveal() {
     if ('IntersectionObserver' in window) {
@@ -512,6 +624,63 @@
       $$('.reveal, .reveal-left, .reveal-right').forEach(function (el) { el.classList.add('visible'); });
     }
   })();
+
+  /* ── Order Tracking ── */
+  var trackForm = $('#track-form');
+  if (trackForm) {
+    trackForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var id = trackForm.querySelector('input[name="orderId"]').value.trim();
+      var result = $('#track-result');
+      var btn = trackForm.querySelector('button[type="submit"]');
+      if (!id) return;
+      btn.disabled = true;
+      result.innerHTML = '<div class="track-loading">Looking up order...</div>';
+      API.get('/api/orders/' + encodeURIComponent(id)).then(function (order) {
+        result.innerHTML = renderTrackResult(order);
+      }).catch(function (err) {
+        result.innerHTML = '<div class="track-error">' + escapeHtml(err.message || 'Order not found') + '</div>';
+      }).then(function () { btn.disabled = false; });
+    });
+  }
+
+  var STATUS_STEPS = ['pending_payment', 'pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered'];
+
+  function renderTrackResult(order) {
+    var status = order.status;
+    var idx = STATUS_STEPS.indexOf(status);
+    var isCancelled = status === 'cancelled';
+    var isRefunded = order.payment_status === 'refunded';
+    var isPaid = order.payment_status === 'paid';
+
+    var stepsHtml = '';
+    if (isCancelled) {
+      stepsHtml = '<div class="track-badge cancelled">Order Cancelled</div>';
+    } else {
+      var labels = ['Payment', 'Received', 'Confirmed', 'Processing', 'Out for Delivery', 'Delivered'];
+      var stepIdx = idx < 0 ? 0 : idx;
+      if (isPaid && idx === 0) stepIdx = 1;
+      stepsHtml = '<div class="track-steps">' + labels.map(function (label, i) {
+        var cls = i < stepIdx ? 'done' : (i === stepIdx ? 'current' : '');
+        return '<div class="track-step ' + cls + '"><span class="track-dot"></span><span>' + label + '</span></div>';
+      }).join('') + '</div>';
+    }
+
+    var itemsHtml = order.items.map(function (it) {
+      return '<li>' + escapeHtml(it.product_name) + ' × ' + it.quantity + ' — GH¢ ' + Number(it.price * it.quantity).toFixed(2) + '</li>';
+    }).join('');
+
+    return '<div class="track-card">' +
+      '<div class="track-order-id">Order <strong>' + escapeHtml(order.id) + '</strong></div>' +
+      '<p class="track-meta">Placed ' + escapeHtml(String(order.createdAt).replace('T', ' ').slice(0, 16)) + ' · ' + escapeHtml(order.delivery_type) + '</p>' +
+      stepsHtml +
+      (isRefunded ? '<div class="track-badge refunded">Payment refunded</div>' : '') +
+      '<ul class="track-items">' + itemsHtml + '</ul>' +
+      '<div class="track-total">Total: <strong>GH¢ ' + Number(order.total).toFixed(2) + '</strong>' +
+        (order.discount > 0 ? ' <span class="track-discount">(discount -GH¢ ' + Number(order.discount).toFixed(2) + ')</span>' : '') +
+      '</div>' +
+    '</div>';
+  }
 
   /* ── Newsletter Subscribe ── */
   $$('.footer-newsletter-form').forEach(function (form) {

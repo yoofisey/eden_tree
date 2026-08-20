@@ -10,10 +10,13 @@
   var $ = function (sel, ctx) { return (ctx || document).querySelector(sel); };
   var $$ = function (sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); };
 
-  /* ── Splash Screen ── */
+  /* ── Splash Screen (fresh page loads only) ── */
   (function initSplash() {
     var splash = document.getElementById('splash');
     if (!splash) return;
+    var navEntries = performance.getEntriesByType('navigation');
+    var navType = navEntries.length ? navEntries[0].type : 'navigate';
+    if (navType !== 'navigate') { splash.remove(); return; }
     var minDelay = 600;
     var start = Date.now();
     function hideSplash() {

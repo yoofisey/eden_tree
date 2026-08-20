@@ -72,11 +72,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   position: fixed;
   inset: 0;
   z-index: 9998;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: opacity 0.4s ease, visibility 0.4s ease;
+  transition: opacity 0.5s ease, visibility 0.5s ease;
 }
 .splash-screen.hidden {
   opacity: 0;
@@ -90,15 +92,16 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   gap: 16px;
 }
 .splash-logo {
-  width: 80px;
-  height: 80px;
-  border-radius: 20px;
+  width: 88px;
+  height: 88px;
+  border-radius: 22px;
   object-fit: cover;
-  animation: splashPulse 2s ease-in-out infinite;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+  animation: splashPulse 1.8s ease-in-out infinite;
 }
 .splash-title {
   font-family: 'Playfair Display', serif;
-  font-size: 28px;
+  font-size: 30px;
   font-weight: 700;
   color: #1a1a1a;
   letter-spacing: -0.01em;
@@ -106,13 +109,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
 .splash-tagline {
   font-size: 13px;
   font-weight: 500;
-  color: #9ca3af;
+  color: rgba(0,0,0,0.45);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 @keyframes splashPulse {
   0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(1.05); opacity: 0.85; }
+  50% { transform: scale(1.08); opacity: 0.8; }
 }
 
 /* ── Processing Overlay ── */

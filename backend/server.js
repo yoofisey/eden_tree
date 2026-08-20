@@ -734,7 +734,7 @@ app.put('/api/admin/password', requireAuth, async (req, res) => {
 });
 
 /* ── Pages: serve only the whitelisted HTML files ── */
-const PUBLIC_PAGES = ['index.html', 'shop.html', 'about.html', 'locations.html', 'contact.html', 'admin.html', 'track.html', '404.html'];
+const PUBLIC_PAGES = ['index.html', 'shop.html', 'about.html', 'locations.html', 'contact.html', 'blog.html', 'admin.html', 'track.html', '404.html'];
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, '..', 'index.html'));

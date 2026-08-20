@@ -10,6 +10,37 @@
   var $ = function (sel, ctx) { return (ctx || document).querySelector(sel); };
   var $$ = function (sel, ctx) { return Array.from((ctx || document).querySelectorAll(sel)); };
 
+  /* ── Splash Screen ── */
+  (function initSplash() {
+    var splash = document.getElementById('splash');
+    if (!splash) return;
+    var minDelay = 600;
+    var start = Date.now();
+    function hideSplash() {
+      var elapsed = Date.now() - start;
+      var wait = Math.max(0, minDelay - elapsed);
+      setTimeout(function () { splash.classList.add('hidden'); }, wait);
+    }
+    if (document.readyState === 'complete') { hideSplash(); }
+    else { window.addEventListener('load', hideSplash); }
+  })();
+
+  /* ── Processing Overlay ── */
+  var processingOverlay = null;
+  function showProcessing(msg) {
+    if (!processingOverlay) {
+      processingOverlay = document.createElement('div');
+      processingOverlay.className = 'processing-overlay';
+      processingOverlay.innerHTML = '<div class="processing-content"><div class="processing-spinner"></div><div class="processing-text"></div></div>';
+      document.body.appendChild(processingOverlay);
+    }
+    processingOverlay.querySelector('.processing-text').textContent = msg || 'Processing...';
+    processingOverlay.classList.add('active');
+  }
+  function hideProcessing() {
+    if (processingOverlay) processingOverlay.classList.remove('active');
+  }
+
   var API = function () {
     var base = window.location.origin;
     return {
@@ -386,6 +417,7 @@
       var btn = form.querySelector('button[type="submit"]');
       btn.disabled = true;
       btn.textContent = 'Processing...';
+      showProcessing('Placing your order...');
 
       API.post('/api/orders', {
         customer: {
@@ -399,6 +431,7 @@
         notes: form.elements.notes.value.trim(),
         promoCode: appliedPromo ? appliedPromo.code : ''
       }).then(function (order) {
+        hideProcessing();
         saveCart([]);
         appliedPromo = null;
         var body = $('#cart-body');
@@ -421,12 +454,14 @@
         $('#pay-now-btn').addEventListener('click', function () {
           this.disabled = true;
           this.textContent = 'Processing...';
+          showProcessing('Processing payment...');
           API.post('/api/payments/initialize', {
             orderId: order.id,
             email: form.elements.email.value.trim(),
             amount: order.total
           }).then(function (pay) {
             if (pay.demo) {
+              hideProcessing();
               body.innerHTML =
                 '<div class="cart-empty">' +
                   '<div class="cart-empty-icon" style="background:var(--amber-100)">' +
@@ -443,7 +478,9 @@
               $('#demo-confirm-btn').addEventListener('click', function () {
                 this.disabled = true;
                 this.textContent = 'Confirming...';
+                showProcessing('Confirming payment...');
                 API.post('/api/payments/demo-confirm', { orderId: pay.reference }).then(function () {
+                  hideProcessing();
                   body.innerHTML =
                     '<div class="cart-empty">' +
                       '<div class="cart-empty-icon" style="background:var(--green-100)">' +
@@ -457,6 +494,7 @@
                     '</div>';
                   showToast('Payment confirmed!');
                 }).catch(function () {
+                  hideProcessing();
                   showToast('Demo confirmation failed', 'error');
                   this.disabled = false;
                   this.textContent = 'Confirm Demo Payment';
@@ -466,12 +504,14 @@
               window.location.href = pay.authorization_url;
             }
           }).catch(function (err) {
+            hideProcessing();
             showToast(err.message || 'Payment failed', 'error');
             this.disabled = false;
             this.textContent = 'Pay Now';
           });
         });
       }).catch(function (err) {
+        hideProcessing();
         showToast(err.message || 'Order failed', 'error');
         btn.disabled = false;
         btn.textContent = 'Place Order';

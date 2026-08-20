@@ -147,43 +147,82 @@ function renderOrders() {
         return matchSearch && matchStatus;
       });
 
+      var counts = { all: orders.length };
+      Object.keys(STATUS_LABELS).forEach(function (s) { counts[s] = 0; });
+      orders.forEach(function (o) { if (counts[o.status] !== undefined) counts[o.status]++; });
+
+      var filterTabsHtml = '<div class="order-filter-tabs">' +
+        '<button class="order-filter-tab' + (statusFilter === 'all' ? ' active' : '') + '" data-status="all">All<span class="order-filter-count">' + counts.all + '</span></button>' +
+        ['pending', 'confirmed', 'processing', 'out_for_delivery', 'delivered', 'cancelled'].map(function (s) {
+          return '<button class="order-filter-tab' + (statusFilter === s ? ' active' : '') + '" data-status="' + s + '">' + STATUS_LABELS[s] + '<span class="order-filter-count">' + (counts[s] || 0) + '</span></button>';
+        }).join('') +
+      '</div>';
+
       container.innerHTML =
         '<div class="admin-page-title"><h1>Orders</h1><p>' + orders.length + ' total</p></div>' +
-        '<div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap">' +
+        '<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">' +
           '<input type="text" id="orders-search" placeholder="Search by ID, name, or email..." value="' + escapeHtml(query) + '" style="flex:1;min-width:200px;padding:10px 14px;border:1px solid var(--gray-200);border-radius:10px;font-size:14px;outline:none;font-family:inherit">' +
-          '<select id="orders-status-filter" style="padding:10px 14px;border:1px solid var(--gray-200);border-radius:10px;font-size:14px;outline:none;font-family:inherit;background:white">' +
-            '<option value="all"' + (statusFilter === 'all' || !statusFilter ? ' selected' : '') + '>All statuses</option>' +
-            Object.keys(STATUS_LABELS).map(function (s) { return '<option value="' + s + '"' + (s === statusFilter ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('') +
-          '</select>' +
           '<button id="orders-export-btn" class="admin-btn-outline" style="font-size:13px;padding:10px 16px;white-space:nowrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:14px;height:14px"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg> Export CSV</button>' +
         '</div>' +
-        '<div style="font-size:13px;color:var(--gray-400);margin-bottom:12px">' + filtered.length + ' result' + (filtered.length !== 1 ? 's' : '') + '</div>' +
+        filterTabsHtml +
+        '<div class="admin-order-count">' + filtered.length + ' result' + (filtered.length !== 1 ? 's' : '') + '</div>' +
         (filtered.length ? '<div class="admin-order-list">' + filtered.map(function (o) {
           var canRefund = canAccess(['owner', 'admin']) && o.payment_status === 'paid';
+          var currentIdx = STATUS_ORDER.indexOf(o.status);
+
+          var pipelineHtml = '<div class="order-pipeline">';
+          STATUS_ORDER.forEach(function (s, i) {
+            var cls = i < currentIdx ? 'done' : (i === currentIdx ? 'active' : 'future');
+            var icon = i < currentIdx
+              ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:10px;height:10px"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>'
+              : '<span>' + (i + 1) + '</span>';
+            pipelineHtml += '<button class="pipeline-step ' + cls + '" data-status="' + s + '" title="Set to ' + STATUS_LABELS[s] + '">' + icon + '<span class="pipeline-label">' + STATUS_LABELS[s] + '</span></button>';
+            if (i < STATUS_ORDER.length - 1) {
+              pipelineHtml += '<div class="pipeline-connector' + (i < currentIdx ? ' done' : '') + '"></div>';
+            }
+          });
+          pipelineHtml += '</div>';
+
           return '<div class="admin-order-card">' +
             '<div class="admin-order-header">' +
-              '<span class="admin-order-id">' + escapeHtml(o.id) + '</span>' +
               '<div style="display:flex;align-items:center;gap:10px">' +
-                '<select class="admin-status-select" data-order-id="' + o.id + '" style="background:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '20;color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + ';border-color:' + (STATUS_SELECT_COLORS[o.status] || '#f59e0b') + '40">' +
-                  Object.keys(STATUS_LABELS).map(function (s) { return '<option value="' + s + '"' + (s === o.status ? ' selected' : '') + '>' + STATUS_LABELS[s] + '</option>'; }).join('') +
-                '</select>' +
+                '<span class="admin-order-id">' + escapeHtml(o.id) + '</span>' +
+                '<span class="order-date-badge">' + new Date(o.createdAt).toLocaleDateString() + '</span>' +
+              '</div>' +
+              '<div style="display:flex;align-items:center;gap:8px">' +
                 (canRefund ? '<button class="admin-btn-outline refund-order-btn" data-id="' + o.id + '" data-total="' + o.total + '" style="font-size:12px;padding:6px 10px;color:#dc2626;border-color:#dc2626">Refund</button>' : '') +
                 '<button class="admin-icon-btn delete-order-btn" data-id="' + o.id + '" title="Delete order"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>' +
               '</div>' +
             '</div>' +
             '<div class="admin-order-customer"><strong>' + escapeHtml(o.customer_name) + '</strong> &lt;' + escapeHtml(o.customer_email) + '&gt;' + (o.customer_phone ? ' &mdash; ' + escapeHtml(o.customer_phone) : '') + '</div>' +
-            '<div class="admin-order-meta">' + new Date(o.createdAt).toLocaleDateString() + ' &middot; GH¢ ' + Number(o.total).toFixed(2) + ' &middot; ' + o.delivery_type + ' &middot; Payment: ' + o.payment_status + '</div>' +
+            '<div class="admin-order-meta">' + 'GH¢ ' + Number(o.total).toFixed(2) + ' &middot; ' + o.delivery_type + ' &middot; Payment: ' + o.payment_status + '</div>' +
             (o.discount > 0 ? '<div class="admin-order-meta" style="color:var(--green-600)">Discount: -GH¢ ' + Number(o.discount).toFixed(2) + (o.promo_code ? ' (code ' + escapeHtml(o.promo_code) + ')' : '') + '</div>' : '') +
             (o.refunded_amount > 0 ? '<div class="admin-order-meta" style="color:#dc2626">Refunded: GH¢ ' + Number(o.refunded_amount).toFixed(2) + (o.refunded_at ? ' on ' + new Date(o.refunded_at).toLocaleDateString() : '') + '</div>' : '') +
             (o.notes ? '<div class="admin-order-notes">' + escapeHtml(o.notes) + '</div>' : '') +
+            '<div class="order-status-section">' +
+              pipelineHtml +
+              (o.status !== 'cancelled' ? '<button class="order-cancel-btn" data-id="' + o.id + '" title="Cancel this order"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:13px;height:13px"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg> Cancel</button>' : '<span class="order-cancelled-badge">Cancelled</span>') +
+            '</div>' +
             (o.items && o.items.length ? '<div class="admin-order-items">' + o.items.map(function (i) { return '<div class="admin-order-item"><span>' + escapeHtml(i.product_name) + '</span><span>&times;' + i.quantity + '</span><span>GH¢ ' + Number(i.price * i.quantity).toFixed(2) + '</span></div>'; }).join('') + '</div>' : '') +
           '</div>';
         }).join('') + '</div>' : '<div style="text-align:center;padding:60px;color:var(--gray-400)">No matching orders</div>');
 
-      container.querySelectorAll('.admin-status-select').forEach(function (sel) {
-        sel.addEventListener('change', function () {
-          API.put('/api/admin/orders/' + sel.dataset.orderId, { status: sel.value }).then(function () {
+      container.querySelectorAll('.pipeline-step').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          var newStatus = this.dataset.status;
+          var orderId = this.closest('.admin-order-card').querySelector('.admin-order-id').textContent;
+          API.put('/api/admin/orders/' + orderId, { status: newStatus }).then(function () {
             showToast('Order status updated');
+            renderOrders();
+          }).catch(function (err) { showToast(err.message || 'Update failed', 'error'); });
+        });
+      });
+
+      container.querySelectorAll('.order-cancel-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (!confirm('Cancel order ' + this.dataset.id + '?')) return;
+          API.put('/api/admin/orders/' + this.dataset.id, { status: 'cancelled' }).then(function () {
+            showToast('Order cancelled');
             renderOrders();
           }).catch(function (err) { showToast(err.message || 'Update failed', 'error'); });
         });
@@ -217,12 +256,12 @@ function renderOrders() {
       document.getElementById('orders-search').addEventListener('input', function () {
         html(orders, this.value, document.getElementById('orders-status-filter').value);
       });
-      document.getElementById('orders-status-filter').addEventListener('change', function () {
-        html(orders, document.getElementById('orders-search').value, this.value);
+      container.querySelectorAll('.order-filter-tab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          html(orders, document.getElementById('orders-search').value, this.dataset.status);
+        });
       });
       document.getElementById('orders-export-btn').addEventListener('click', function () {
-        var q = document.getElementById('orders-search').value;
-        var s = document.getElementById('orders-status-filter').value;
         var rows = filtered.map(function (o) {
           return [
             o.id,

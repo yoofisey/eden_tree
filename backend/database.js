@@ -252,6 +252,19 @@ async function migrate(db) {
     active INTEGER NOT NULL DEFAULT 1,
     createdAt TEXT NOT NULL DEFAULT ${nowExpr()}
   )`);
+
+  /* Strip trailing price patterns from product names (e.g. "Yellow Box - GHS 470" → "Yellow Box") */
+  const pricePattern = /\s*[-–—]\s*(GH¢|GHc|GHS|GH₵)\s*[\d,.]+$/i;
+  const pricePattern2 = /\s+(GH¢|GHc|GHS|GH₵)\s*[\d,.]+$/i;
+  const allProducts = await queryAll(db, 'SELECT id, name FROM products');
+  for (const p of allProducts) {
+    let cleaned = p.name.replace(pricePattern, '').trim();
+    cleaned = cleaned.replace(pricePattern2, '').trim();
+    if (cleaned !== p.name) {
+      await run(db, 'UPDATE products SET name = ? WHERE id = ?', [cleaned, p.id]);
+      console.log(`→ cleaned product name: "${p.name}" → "${cleaned}"`);
+    }
+  }
 }
 
 const SEED_IMAGES = [

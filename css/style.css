@@ -67,6 +67,95 @@ input, textarea, select { font-family: inherit; font-size: inherit; }
   --transition-spring: 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ── Splash Screen ── */
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  background: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.4s ease, visibility 0.4s ease;
+}
+.splash-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+.splash-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  object-fit: cover;
+  animation: splashPulse 2s ease-in-out infinite;
+}
+.splash-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: -0.01em;
+}
+.splash-tagline {
+  font-size: 13px;
+  font-weight: 500;
+  color: #9ca3af;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+@keyframes splashPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.85; }
+}
+
+/* ── Processing Overlay ── */
+.processing-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.processing-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+.processing-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.processing-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #4a8c1a;
+  border-radius: 50%;
+  animation: processingSpin 0.8s linear infinite;
+}
+.processing-text {
+  font-size: 15px;
+  font-weight: 600;
+  color: #374151;
+}
+@keyframes processingSpin {
+  to { transform: rotate(360deg); }
+}
+
 /* ── Typography ── */
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Playfair Display', Georgia, serif;
@@ -2460,7 +2549,7 @@ body.cart-open { overflow: hidden; }
   border-bottom: none;
 }
 
-/* Admin Status Select */
+/* Admin Status Select (legacy - kept for compatibility) */
 .admin-status-select {
   padding: 7px 12px;
   border-radius: 8px;
@@ -2476,6 +2565,189 @@ body.cart-open { overflow: hidden; }
 
 .admin-status-select:focus {
   box-shadow: 0 0 0 3px rgba(74, 140, 26, 0.12);
+}
+
+/* Order Filter Tabs */
+.order-filter-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  padding-bottom: 4px;
+}
+
+.order-filter-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--gray-200);
+  border-radius: 20px;
+  background: white;
+  color: var(--gray-500);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.order-filter-tab:hover {
+  border-color: var(--gray-300);
+  color: var(--gray-700);
+  background: var(--gray-50);
+}
+
+.order-filter-tab.active {
+  background: #1a1a1a;
+  color: white;
+  border-color: #1a1a1a;
+}
+
+.order-filter-tab.active .order-filter-count {
+  background: rgba(255,255,255,0.2);
+  color: white;
+}
+
+.order-filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--gray-100);
+  color: var(--gray-500);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* Order Status Pipeline */
+.order-status-section {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--gray-100);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.order-pipeline {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.pipeline-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1.5px solid var(--gray-200);
+  background: white;
+  color: var(--gray-400);
+  line-height: 1;
+}
+
+.pipeline-step:hover {
+  border-color: var(--green-400);
+  color: var(--green-700);
+  background: var(--green-50);
+}
+
+.pipeline-step.active {
+  background: var(--green-600);
+  color: white;
+  border-color: var(--green-600);
+}
+
+.pipeline-step.active:hover {
+  background: var(--green-700);
+  border-color: var(--green-700);
+  color: white;
+}
+
+.pipeline-step.done {
+  background: var(--green-50);
+  color: var(--green-700);
+  border-color: var(--green-200);
+}
+
+.pipeline-step.done:hover {
+  background: var(--green-100);
+  border-color: var(--green-300);
+}
+
+.pipeline-label {
+  display: inline;
+}
+
+.pipeline-connector {
+  width: 16px;
+  height: 1.5px;
+  background: var(--gray-200);
+  flex-shrink: 0;
+}
+
+.pipeline-connector.done {
+  background: var(--green-400);
+}
+
+.order-date-badge {
+  display: inline-flex;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--gray-100);
+  color: var(--gray-500);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.order-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 10px;
+  border: 1px solid var(--gray-200);
+  border-radius: 14px;
+  background: white;
+  color: var(--gray-400);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.order-cancel-btn:hover {
+  border-color: #fca5a5;
+  color: #dc2626;
+  background: #fef2f2;
+}
+
+.order-cancelled-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border-radius: 14px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 /* Admin Orders */
@@ -2813,6 +3085,13 @@ body.cart-open { overflow: hidden; }
   .admin-order-card { padding: 18px; }
   .admin-order-top-actions { width: 100%; }
   .admin-order-top-actions .admin-status-select { flex: 1; }
+  .order-filter-tabs { gap: 4px; }
+  .order-filter-tab { padding: 6px 10px; font-size: 12px; }
+  .order-pipeline { gap: 3px; }
+  .pipeline-step { padding: 5px 8px; font-size: 11px; }
+  .pipeline-label { display: none; }
+  .pipeline-connector { width: 10px; }
+  .order-status-section { flex-direction: column; align-items: flex-start; }
 }
 
 /* Admin Advance Button */

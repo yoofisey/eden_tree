@@ -166,6 +166,34 @@
     }
     productGrid.innerHTML = html;
 
+    /* Inject Product JSON-LD for SEO */
+    var existingLD = document.getElementById('shop-product-ld');
+    if (existingLD) existingLD.remove();
+    if (filtered.length) {
+      var ldScripts = filtered.map(function (p) {
+        return {
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": p.name,
+          "description": p.description,
+          "image": p.image,
+          "brand": { "@type": "Organization", "name": "Eden Tree Ltd." },
+          "offers": {
+            "@type": "Offer",
+            "priceCurrency": "GHS",
+            "price": Number(p.price).toFixed(2),
+            "availability": p.stock > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            "url": "https://edentreegh.com/shop.html"
+          }
+        };
+      });
+      var ldEl = document.createElement('script');
+      ldEl.type = 'application/ld+json';
+      ldEl.id = 'shop-product-ld';
+      ldEl.textContent = JSON.stringify(ldScripts.length === 1 ? ldScripts[0] : ldScripts);
+      document.head.appendChild(ldEl);
+    }
+
     productGrid.querySelectorAll('.product-img img').forEach(function (img) {
       var parent = img.parentElement;
       if (img.complete) return;

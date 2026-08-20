@@ -94,49 +94,8 @@
         <h1 style="font-size:clamp(2rem,5vw,3rem);margin-bottom:16px">From Our Kitchen</h1>
         <p style="max-width:580px;margin:0 auto;color:var(--gray-500);font-size:1.05rem">Discover fresh recipes, healthy eating tips, and behind-the-scenes stories from Ghana's favourite produce company.</p>
       </div>
-      <div class="blog-grid">
-        <article class="blog-card reveal">
-          <div class="blog-card-img">
-            <img src="images/products/mangoes.jpg" alt="Ghana fresh mangoes">
-          </div>
-          <div class="blog-card-body">
-            <div class="blog-card-meta">
-              <span>Recipes</span>
-              <span>August 2026</span>
-            </div>
-            <h3>5 Ways to Enjoy Ghana's Fresh Mangoes This Season</h3>
-            <p>Mango season is here and Ghana's markets are overflowing with golden, juicy fruit. Here are five delicious ways to make the most of this tropical treasure.</p>
-            <a href="#" class="blog-read-more">Read More →</a>
-          </div>
-        </article>
-        <article class="blog-card reveal">
-          <div class="blog-card-img">
-            <img src="images/products/carrots.jpg" alt="Fresh seasonal carrots">
-          </div>
-          <div class="blog-card-body">
-            <div class="blog-card-meta">
-              <span>Health Tips</span>
-              <span>July 2026</span>
-            </div>
-            <h3>Why Eating Seasonal Vegetables Matters</h3>
-            <p>Seasonal produce isn't just better for the planet — it's richer in flavour and nutrients. Learn why choosing in-season vegetables is one of the simplest healthy swaps you can make.</p>
-            <a href="#" class="blog-read-more">Read More →</a>
-          </div>
-        </article>
-        <article class="blog-card reveal">
-          <div class="blog-card-img">
-            <img src="images/products/etl-honey.jpeg" alt="Eden Tree honey">
-          </div>
-          <div class="blog-card-body">
-            <div class="blog-card-meta">
-              <span>Behind the Scenes</span>
-              <span>June 2026</span>
-            </div>
-            <h3>From Farm to Shelf: How Eden Tree Keeps Produce Fresh</h3>
-            <p>Ever wonder what happens between harvest and your doorstep? Take a look inside our cold-chain process and see how we keep every item farm-fresh.</p>
-            <a href="#" class="blog-read-more">Read More →</a>
-          </div>
-        </article>
+      <div class="blog-grid" id="blog-grid">
+        <div style="text-align:center;padding:60px;color:var(--gray-400)">Loading posts...</div>
       </div>
     </div>
   </section>
@@ -212,6 +171,61 @@
   </footer>
 
   <script src="js/app.js" defer></script>
+  <script>
+  (function() {
+    var grid = document.getElementById('blog-grid');
+    if (!grid) return;
+
+    var params = new URLSearchParams(window.location.search);
+    var postSlug = params.get('post');
+
+    function escapeHtml(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+    if (postSlug) {
+      fetch('/api/blog/' + encodeURIComponent(postSlug))
+        .then(function(r) { if (!r.ok) throw new Error('not found'); return r.json(); })
+        .then(function(p) {
+          document.title = p.title + ' — Eden Tree Ltd.';
+          grid.innerHTML =
+            '<div style="max-width:720px;margin:0 auto">' +
+              '<a href="blog.html" style="display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--gray-500);text-decoration:none;margin-bottom:24px">← Back to Blog</a>' +
+              (p.image ? '<img src="' + escapeHtml(p.image) + '" alt="' + escapeHtml(p.title) + '" style="width:100%;border-radius:16px;margin-bottom:24px;max-height:400px;object-fit:cover">' : '') +
+              '<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap"><span class="badge badge-blue">' + escapeHtml(p.category) + '</span><span style="font-size:13px;color:var(--gray-400)">' + new Date(p.createdAt).toLocaleDateString() + '</span><span style="font-size:13px;color:var(--gray-400)">' + (p.author || 'Eden Tree Team') + '</span></div>' +
+              '<h1 style="font-size:clamp(1.6rem,4vw,2.4rem);margin-bottom:20px;line-height:1.3">' + escapeHtml(p.title) + '</h1>' +
+              '<div class="blog-article-content" style="font-size:16px;line-height:1.8;color:var(--gray-700)">' + (p.content || '<p>' + escapeHtml(p.excerpt) + '</p>') + '</div>' +
+            '</div>';
+        })
+        .catch(function() {
+          grid.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400)"><p>Post not found.</p><a href="blog.html" style="color:var(--green-600)">← Back to Blog</a></div>';
+        });
+      return;
+    }
+
+    fetch('/api/blog')
+      .then(function(r) { return r.json(); })
+      .then(function(posts) {
+        if (!posts.length) {
+          grid.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400)">No posts yet. Check back soon!</div>';
+          return;
+        }
+        grid.innerHTML = posts.map(function(p) {
+          var date = new Date(p.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+          return '<article class="blog-card">' +
+            (p.image ? '<div class="blog-card-img"><a href="blog.html?post=' + p.slug + '"><img src="' + escapeHtml(p.image) + '" alt="' + escapeHtml(p.title) + '" loading="lazy"></a></div>' : '') +
+            '<div class="blog-card-body">' +
+              '<div class="blog-card-meta"><span>' + escapeHtml(p.category) + '</span><span>' + date + '</span></div>' +
+              '<h3><a href="blog.html?post=' + p.slug + '" style="color:inherit;text-decoration:none">' + escapeHtml(p.title) + '</a></h3>' +
+              '<p>' + escapeHtml(p.excerpt || '') + '</p>' +
+              '<a href="blog.html?post=' + p.slug + '" class="blog-read-more">Read More →</a>' +
+            '</div>' +
+          '</article>';
+        }).join('');
+      })
+      .catch(function() {
+        grid.innerHTML = '<div style="text-align:center;padding:60px;color:var(--gray-400)">Could not load posts.</div>';
+      });
+  })();
+  </script>
 
 </body>
 </html>

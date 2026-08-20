@@ -374,6 +374,24 @@ app.post('/api/messages', rateLimit(60 * 1000, 5), async (req, res) => {
 });
 
 /* ══════════════════════════════════════════
+   BLOG (public)
+   ══════════════════════════════════════════ */
+app.get('/api/blog', async (req, res) => {
+  await withDb(async (db) => {
+    const posts = await queryAll(db, 'SELECT id, title, slug, excerpt, category, image, author, createdAt FROM blog_posts WHERE published = 1 ORDER BY createdAt DESC');
+    return res.json(posts);
+  });
+});
+
+app.get('/api/blog/:slug', async (req, res) => {
+  await withDb(async (db) => {
+    const post = await queryOne(db, 'SELECT * FROM blog_posts WHERE slug = ? AND published = 1', [req.params.slug]);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    return res.json(post);
+  });
+});
+
+/* ══════════════════════════════════════════
    NEWSLETTER
    ══════════════════════════════════════════ */
 app.post('/api/newsletter', rateLimit(60 * 1000, 5), async (req, res) => {
@@ -406,6 +424,10 @@ app.get('/api/broadcasts', async (req, res) => {
    ADMIN — DASHBOARD
    ══════════════════════════════════════════ */
 app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
+  const days = Number(req.query.days) || 7;
+  const startDate = req.query.start || '';
+  const endDate = req.query.end || '';
+
   await withDb(async (db) => {
     const totalOrders = await queryOne(db, 'SELECT COUNT(*) as count FROM orders');
     const pendingOrders = await queryOne(db, "SELECT COUNT(*) as count FROM orders WHERE status IN ('pending','pending_payment','confirmed')");
@@ -414,19 +436,49 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
     const recentOrders = await queryAll(db, "SELECT * FROM orders ORDER BY createdAt DESC LIMIT 5");
     const unreadMessages = await queryOne(db, 'SELECT COUNT(*) as count FROM messages WHERE is_read = 0');
     const subscriberCount = await queryOne(db, 'SELECT COUNT(*) as count FROM newsletter_subscribers');
-    const paidOrders = await queryAll(db, "SELECT createdAt, total, refunded_amount FROM orders WHERE payment_status IN ('paid','refunded')");
+
+    let dateFilter = '';
+    let params = [];
+    if (startDate && endDate) {
+      dateFilter = "WHERE payment_status IN ('paid','refunded') AND createdAt >= ? AND createdAt <= ?";
+      params = [startDate + 'T00:00:00', endDate + 'T23:59:59'];
+    } else {
+      dateFilter = "WHERE payment_status IN ('paid','refunded')";
+    }
+    const paidOrders = await queryAll(db, `SELECT createdAt, total, refunded_amount FROM orders ${dateFilter}`, params);
 
     const revenueByDayMap = {};
     paidOrders.forEach(r => {
       const day = String(r.createdAt).slice(0, 10);
       revenueByDayMap[day] = (revenueByDayMap[day] || 0) + Number(r.total) - Number(r.refunded_amount || 0);
     });
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
+
+    let dayCount = days;
+    if (startDate && endDate) {
+      const s = new Date(startDate);
+      const e = new Date(endDate);
+      dayCount = Math.max(1, Math.round((e - s) / 86400000) + 1);
+    }
+    const dayList = [];
+    for (let i = dayCount - 1; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000);
       const key = d.toISOString().slice(0, 10);
-      days.push({ day: key, total: revenueByDayMap[key] || 0 });
+      dayList.push({ day: key, total: revenueByDayMap[key] || 0 });
     }
+
+    /* Top products by revenue */
+    const topProducts = await queryAll(db, `
+      SELECT oi.product_name, SUM(oi.quantity) as total_qty, SUM(oi.price * oi.quantity) as total_rev
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      WHERE o.payment_status IN ('paid','refunded')
+      GROUP BY oi.product_name
+      ORDER BY total_rev DESC
+      LIMIT 10
+    `);
+
+    /* Orders by status */
+    const statusCounts = await queryAll(db, 'SELECT status, COUNT(*) as count FROM orders GROUP BY status');
 
     return res.json({
       total_orders: Number(totalOrders.count),
@@ -436,8 +488,25 @@ app.get('/api/admin/dashboard', requireAuth, async (req, res) => {
       recent_orders: recentOrders,
       unread_messages: Number(unreadMessages.count),
       subscriber_count: Number(subscriberCount.count),
-      revenue_by_day: days,
+      revenue_by_day: dayList,
+      top_products: topProducts,
+      status_counts: statusCounts,
     });
+  });
+});
+
+/* ── Product Sales Report ── */
+app.get('/api/admin/reports/products', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+  await withDb(async (db) => {
+    const sales = await queryAll(db, `
+      SELECT oi.product_name, SUM(oi.quantity) as total_sold, SUM(oi.price * oi.quantity) as total_revenue, COUNT(DISTINCT oi.order_id) as order_count
+      FROM order_items oi
+      JOIN orders o ON o.id = oi.order_id
+      WHERE o.payment_status IN ('paid','refunded')
+      GROUP BY oi.product_name
+      ORDER BY total_revenue DESC
+    `);
+    return res.json(sales);
   });
 });
 
@@ -701,6 +770,52 @@ app.put('/api/admin/promos/:id', requireAuth, requireRole('owner', 'admin'), asy
 app.delete('/api/admin/promos/:id', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
   await withDb(async (db) => {
     await run(db, 'DELETE FROM promo_codes WHERE id = ?', [req.params.id]);
+    return res.json({ success: true });
+  });
+});
+
+/* ══════════════════════════════════════════
+   ADMIN — BLOG
+   ══════════════════════════════════════════ */
+app.get('/api/admin/blog', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+  await withDb(async (db) => {
+    const posts = await queryAll(db, 'SELECT * FROM blog_posts ORDER BY createdAt DESC');
+    return res.json(posts);
+  });
+});
+
+app.post('/api/admin/blog', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+  const { title, excerpt, content, category, image, author, published } = req.body;
+  if (!title) return res.status(400).json({ error: 'Title required' });
+  const id = 'blog_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+  const slug = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now();
+  await withDb(async (db) => {
+    await run(db, 'INSERT INTO blog_posts (id, title, slug, excerpt, content, category, image, author, published) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [id, String(title).trim(), slug, (excerpt || '').trim(), (content || '').trim(), category || 'general', image || '', author || 'Eden Tree Team', published !== undefined ? (published ? 1 : 0) : 1]);
+    return res.json({ success: true, id, slug });
+  });
+});
+
+app.put('/api/admin/blog/:id', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+  const { title, excerpt, content, category, image, author, published } = req.body;
+  await withDb(async (db) => {
+    const post = await queryOne(db, 'SELECT * FROM blog_posts WHERE id = ?', [req.params.id]);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    let slug = post.slug;
+    if (title && title !== post.title) {
+      slug = String(title).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') + '-' + Date.now();
+    }
+    await run(db, 'UPDATE blog_posts SET title=?, slug=?, excerpt=?, content=?, category=?, image=?, author=?, published=?, updatedAt=? WHERE id=?',
+      [title !== undefined ? String(title).trim() : post.title, slug, excerpt !== undefined ? excerpt.trim() : post.excerpt,
+       content !== undefined ? content.trim() : post.content, category || post.category, image !== undefined ? image : post.image,
+       author || post.author, published !== undefined ? (published ? 1 : 0) : post.published, new Date().toISOString(), req.params.id]);
+    return res.json({ success: true, slug });
+  });
+});
+
+app.delete('/api/admin/blog/:id', requireAuth, requireRole('owner', 'admin'), async (req, res) => {
+  await withDb(async (db) => {
+    await run(db, 'DELETE FROM blog_posts WHERE id = ?', [req.params.id]);
     return res.json({ success: true });
   });
 });

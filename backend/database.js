@@ -253,6 +253,20 @@ async function migrate(db) {
     createdAt TEXT NOT NULL DEFAULT ${nowExpr()}
   )`);
 
+  await run(db, `CREATE TABLE IF NOT EXISTS blog_posts (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    excerpt TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    category TEXT NOT NULL DEFAULT 'general',
+    image TEXT NOT NULL DEFAULT '',
+    author TEXT NOT NULL DEFAULT 'Eden Tree Team',
+    published INTEGER NOT NULL DEFAULT 1,
+    createdAt TEXT NOT NULL DEFAULT ${nowExpr()},
+    updatedAt TEXT NOT NULL DEFAULT ${nowExpr()}
+  )`);
+
   /* Strip trailing price patterns from product names (e.g. "Yellow Box - GHS 470" → "Yellow Box") */
   const pricePattern = /\s*[-–—]\s*(GH¢|GHc|GHS|GH₵)\s*[\d,.]+$/i;
   const pricePattern2 = /\s+(GH¢|GHc|GHS|GH₵)\s*[\d,.]+$/i;

@@ -3114,6 +3114,31 @@ body.cart-open { overflow: hidden; }
   box-shadow: 0 2px 8px rgba(74, 140, 26, 0.3);
 }
 
+/* Dashboard Range Buttons */
+.dash-range-btn {
+  padding: 5px 12px;
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  background: white;
+  color: var(--gray-500);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.dash-range-btn:hover {
+  border-color: var(--gray-300);
+  color: var(--gray-700);
+}
+
+.dash-range-btn.active {
+  background: #1a1a1a;
+  color: white;
+  border-color: #1a1a1a;
+}
+
 /* Admin Product Card */
 .admin-products-grid {
   display: grid;

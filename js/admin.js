@@ -69,6 +69,7 @@ function renderActiveView() {
   else if (activeView === 'messages') renderMessages();
   else if (activeView === 'subscribers') renderSubscribers();
   else if (activeView === 'promos') renderPromos();
+  else if (activeView === 'blog') renderBlog();
   else if (activeView === 'users') renderUsers();
 }
 
@@ -113,22 +114,63 @@ function renderDashboard() {
   var container = $('#view-dashboard');
   container.innerHTML = '<div style="text-align:center;padding:80px"><p>Loading dashboard...</p></div>';
 
-  API.get('/api/admin/dashboard').then(function (d) {
-    container.innerHTML =
-      '<div class="admin-page-title"><h1>Dashboard</h1><p>Overview of your store</p></div>' +
-      '<div class="admin-stats-grid">' +
-        '<div class="admin-stat-card"><div class="admin-stat-value">' + d.total_orders + '</div><div class="admin-stat-label">Total Orders</div></div>' +
-        '<div class="admin-stat-card"><div class="admin-stat-value">' + d.pending_orders + '</div><div class="admin-stat-label">Pending</div></div>' +
-        '<div class="admin-stat-card"><div class="admin-stat-value">GH¢ ' + Number(d.total_revenue).toFixed(2) + '</div><div class="admin-stat-label">Revenue (paid)</div></div>' +
-        '<div class="admin-stat-card"><div class="admin-stat-value">' + d.unread_messages + '</div><div class="admin-stat-label">Unread Messages</div></div>' +
-        '<div class="admin-stat-card"><div class="admin-stat-value">' + d.subscriber_count + '</div><div class="admin-stat-label">Subscribers</div></div>' +
-      '</div>' +
-      '<div class="admin-card" style="margin-top:24px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px"><h3 class="admin-card-title" style="margin:0">Revenue — Last 7 Days</h3><span style="font-size:12px;color:var(--gray-400)">paid orders</span></div>' + chartHTML(d.revenue_by_day || []) + '</div>' +
-      (d.low_stock && d.low_stock.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Low Stock Alert</h3>' + d.low_stock.map(function (p) { return '<div class="admin-low-stock-item"><span>' + escapeHtml(p.name) + '</span><span class="badge badge-red">' + p.stock + ' left</span></div>'; }).join('') + '</div>' : '') +
-      (d.recent_orders && d.recent_orders.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Recent Orders</h3>' + d.recent_orders.map(function (o) { return '<div class="admin-recent-order"><span>' + o.id + '</span><span class="badge ' + (STATUS_COLORS[o.status] || 'badge-amber') + '">' + (STATUS_LABELS[o.status] || o.status) + '</span><span>GH¢ ' + Number(o.total).toFixed(2) + '</span></div>'; }).join('') + '</div>' : '');
-  }).catch(function () {
-    container.innerHTML = '<div class="admin-page-title"><h1>Dashboard</h1><p>Error loading data. Is the server running?</p></div>';
-  });
+  function loadDashboard(days, start, end) {
+    var params = '?days=' + (days || 7);
+    if (start && end) params = '?start=' + start + '&end=' + end;
+    API.get('/api/admin/dashboard' + params).then(function (d) {
+      var rangeLabel = (start && end) ? start + ' to ' + end : 'Last ' + (days || 7) + ' days';
+      var statusMap = {};
+      (d.status_counts || []).forEach(function (s) { statusMap[s.status] = Number(s.count); });
+
+      container.innerHTML =
+        '<div class="admin-page-title"><h1>Dashboard</h1><p>Overview of your store</p></div>' +
+        '<div class="admin-stats-grid">' +
+          '<div class="admin-stat-card"><div class="admin-stat-value">' + d.total_orders + '</div><div class="admin-stat-label">Total Orders</div></div>' +
+          '<div class="admin-stat-card"><div class="admin-stat-value">' + d.pending_orders + '</div><div class="admin-stat-label">Pending</div></div>' +
+          '<div class="admin-stat-card"><div class="admin-stat-value">GH¢ ' + Number(d.total_revenue).toFixed(2) + '</div><div class="admin-stat-label">Revenue (paid)</div></div>' +
+          '<div class="admin-stat-card"><div class="admin-stat-value">' + d.unread_messages + '</div><div class="admin-stat-label">Unread Messages</div></div>' +
+          '<div class="admin-stat-card"><div class="admin-stat-value">' + d.subscriber_count + '</div><div class="admin-stat-label">Subscribers</div></div>' +
+        '</div>' +
+        '<div class="admin-card" style="margin-top:24px">' +
+          '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">' +
+            '<h3 class="admin-card-title" style="margin:0">Revenue — ' + rangeLabel + '</h3>' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+              '<button class="dash-range-btn active" data-days="7">7D</button>' +
+              '<button class="dash-range-btn" data-days="30">30D</button>' +
+              '<button class="dash-range-btn" data-days="90">90D</button>' +
+              '<input type="date" id="dash-start" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-family:inherit">' +
+              '<input type="date" id="dash-end" style="padding:5px 8px;border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-family:inherit">' +
+              '<button id="dash-apply-range" class="admin-btn-outline" style="font-size:11px;padding:5px 10px">Apply</button>' +
+            '</div>' +
+          '</div>' +
+          chartHTML(d.revenue_by_day || []) +
+        '</div>' +
+        (d.top_products && d.top_products.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Top Products by Revenue</h3><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="border-bottom:1px solid var(--gray-100);text-align:left"><th style="padding:8px 10px;color:var(--gray-500);font-weight:600">Product</th><th style="padding:8px 10px;color:var(--gray-500);font-weight:600;text-align:right">Qty Sold</th><th style="padding:8px 10px;color:var(--gray-500);font-weight:600;text-align:right">Revenue</th></tr></thead><tbody>' + d.top_products.map(function (p) { return '<tr style="border-bottom:1px solid var(--gray-50)"><td style="padding:8px 10px">' + escapeHtml(p.product_name) + '</td><td style="padding:8px 10px;text-align:right">' + p.total_qty + '</td><td style="padding:8px 10px;text-align:right;font-weight:600">GH¢ ' + Number(p.total_rev).toFixed(2) + '</td></tr>'; }).join('') + '</tbody></table></div></div>' : '') +
+        (statusMap && Object.keys(statusMap).length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Orders by Status</h3><div style="display:flex;gap:8px;flex-wrap:wrap">' + Object.keys(statusMap).map(function (s) { return '<span class="badge ' + (STATUS_COLORS[s] || 'badge-gray') + '">' + (STATUS_LABELS[s] || s) + ': ' + statusMap[s] + '</span>'; }).join('') + '</div></div>' : '') +
+        (d.low_stock && d.low_stock.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Low Stock Alert</h3>' + d.low_stock.map(function (p) { return '<div class="admin-low-stock-item"><span>' + escapeHtml(p.name) + '</span><span class="badge badge-red">' + p.stock + ' left</span></div>'; }).join('') + '</div>' : '') +
+        (d.recent_orders && d.recent_orders.length ? '<div class="admin-card" style="margin-top:16px"><h3 class="admin-card-title">Recent Orders</h3>' + d.recent_orders.map(function (o) { return '<div class="admin-recent-order"><span>' + o.id + '</span><span class="badge ' + (STATUS_COLORS[o.status] || 'badge-amber') + '">' + (STATUS_LABELS[o.status] || o.status) + '</span><span>GH¢ ' + Number(o.total).toFixed(2) + '</span></div>'; }).join('') + '</div>' : '');
+
+      container.querySelectorAll('.dash-range-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          container.querySelectorAll('.dash-range-btn').forEach(function (b) { b.classList.remove('active'); });
+          this.classList.add('active');
+          loadDashboard(Number(this.dataset.days));
+        });
+      });
+      var applyBtn = document.getElementById('dash-apply-range');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', function () {
+          var s = document.getElementById('dash-start').value;
+          var e = document.getElementById('dash-end').value;
+          if (s && e) { loadDashboard(7, s, e); }
+          else { loadDashboard(30); }
+        });
+      }
+    }).catch(function () {
+      container.innerHTML = '<div class="admin-page-title"><h1>Dashboard</h1><p>Error loading data. Is the server running?</p></div>';
+    });
+  }
+  loadDashboard(7);
 }
 
 /* ══════════════════════════════════════════
@@ -855,6 +897,102 @@ function showUserModal() {
 }
 
 /* ══════════════════════════════════════════
+   BLOG
+   ══════════════════════════════════════════ */
+function renderBlog() {
+  var container = $('#view-blog');
+  container.innerHTML = '<div style="text-align:center;padding:80px"><p>Loading posts...</p></div>';
+
+  API.get('/api/admin/blog').then(function (posts) {
+    container.innerHTML =
+      '<div class="admin-page-title"><h1>Blog</h1><p>' + posts.length + ' posts</p></div>' +
+      '<button class="admin-btn-primary" id="blog-new-btn" style="margin-bottom:20px">+ New Post</button>' +
+      (posts.length ? '<div class="admin-order-list">' + posts.map(function (p) {
+        return '<div class="admin-order-card">' +
+          '<div class="admin-order-header">' +
+            '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+              '<span class="admin-order-id">' + escapeHtml(p.title) + '</span>' +
+              '<span class="badge ' + (p.published ? 'badge-green' : 'badge-gray') + '">' + (p.published ? 'Published' : 'Draft') + '</span>' +
+              '<span class="badge badge-blue">' + escapeHtml(p.category) + '</span>' +
+            '</div>' +
+            '<div style="display:flex;align-items:center;gap:8px">' +
+              '<button class="admin-btn-outline blog-edit-btn" data-id="' + p.id + '" style="font-size:12px;padding:6px 10px">Edit</button>' +
+              '<button class="admin-icon-btn blog-delete-btn" data-id="' + p.id + '" title="Delete post"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg></button>' +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:13px;color:var(--gray-500);margin-bottom:6px">' + escapeHtml(p.excerpt || 'No excerpt') + '</div>' +
+          '<div style="font-size:12px;color:var(--gray-400)">' + (p.author || 'Eden Tree Team') + ' &middot; ' + new Date(p.createdAt).toLocaleDateString() + (p.updatedAt !== p.createdAt ? ' &middot; Updated ' + new Date(p.updatedAt).toLocaleDateString() : '') + '</div>' +
+        '</div>';
+      }).join('') + '</div>' : '<div style="text-align:center;padding:60px;color:var(--gray-400)">No posts yet</div>');
+
+    document.getElementById('blog-new-btn').addEventListener('click', function () { showBlogModal(null); });
+    container.querySelectorAll('.blog-edit-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var post = posts.find(function (p) { return p.id === btn.dataset.id; });
+        if (post) showBlogModal(post);
+      });
+    });
+    container.querySelectorAll('.blog-delete-btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        if (!confirm('Delete this post? This cannot be undone.')) return;
+        API.del('/api/admin/blog/' + btn.dataset.id).then(function () {
+          showToast('Post deleted');
+          renderBlog();
+        }).catch(function (err) { showToast(err.message || 'Delete failed', 'error'); });
+      });
+    });
+  }).catch(function () {
+    container.innerHTML = '<div class="admin-page-title"><h1>Blog</h1><p>Error loading posts</p></div>';
+  });
+}
+
+function showBlogModal(post) {
+  var overlay = document.getElementById('blog-modal');
+  var titleEl = document.getElementById('blog-modal-title');
+  var body = document.getElementById('blog-modal-body');
+  titleEl.textContent = post ? 'Edit Post' : 'New Post';
+
+  body.innerHTML =
+    '<form id="blog-form" style="display:flex;flex-direction:column;gap:14px">' +
+      '<div class="admin-form-group"><label>Title</label><input type="text" data-title required value="' + escapeHtml(post ? post.title : '') + '" placeholder="Post title"></div>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+        '<div class="admin-form-group" style="flex:1;min-width:140px"><label>Category</label><select data-category><option value="general"' + (post && post.category === 'general' ? ' selected' : '') + '>General</option><option value="recipes"' + (post && post.category === 'recipes' ? ' selected' : '') + '>Recipes</option><option value="tips"' + (post && post.category === 'tips' ? ' selected' : '') + '>Tips</option><option value="news"' + (post && post.category === 'news' ? ' selected' : '') + '>News</option><option value="health"' + (post && post.category === 'health' ? ' selected' : '') + '>Health</option></select></div>' +
+        '<div class="admin-form-group" style="flex:1;min-width:140px"><label>Author</label><input type="text" data-author value="' + escapeHtml(post ? post.author : 'Eden Tree Team') + '"></div>' +
+      '</div>' +
+      '<div class="admin-form-group"><label>Excerpt</label><input type="text" data-excerpt value="' + escapeHtml(post ? post.excerpt : '') + '" placeholder="Short summary for the blog listing"></div>' +
+      '<div class="admin-form-group"><label>Image URL</label><input type="text" data-image value="' + escapeHtml(post ? post.image : '') + '" placeholder="https://... or upload path"></div>' +
+      '<div class="admin-form-group"><label>Content (HTML)</label><textarea data-content rows="10" style="width:100%;padding:10px 14px;border:1px solid var(--gray-200);border-radius:10px;font-size:14px;font-family:inherit;resize:vertical">' + escapeHtml(post ? post.content : '') + '</textarea></div>' +
+      '<div class="admin-form-group"><label><input type="checkbox" data-published ' + (!post || post.published ? ' checked' : '') + '> Published</label></div>' +
+      '<button type="submit" class="admin-btn-primary" style="align-self:flex-start">' + (post ? 'Save Changes' : 'Publish Post') + '</button>' +
+    '</form>';
+
+  overlay.classList.add('open');
+  document.getElementById('blog-modal-close').onclick = function () { overlay.classList.remove('open'); };
+  overlay.addEventListener('click', function handler(e) { if (e.target === overlay) { overlay.classList.remove('open'); overlay.removeEventListener('click', handler); } });
+
+  document.getElementById('blog-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var data = {
+      title: body.querySelector('[data-title]').value.trim(),
+      category: body.querySelector('[data-category]').value,
+      author: body.querySelector('[data-author]').value.trim(),
+      excerpt: body.querySelector('[data-excerpt]').value.trim(),
+      image: body.querySelector('[data-image]').value.trim(),
+      content: body.querySelector('[data-content]').value,
+      published: body.querySelector('[data-published]').checked
+    };
+    if (!data.title) { showToast('Title is required', 'error'); return; }
+
+    var promise = post ? API.put('/api/admin/blog/' + post.id, data) : API.post('/api/admin/blog', data);
+    promise.then(function () {
+      showToast(post ? 'Post updated' : 'Post created');
+      overlay.classList.remove('open');
+      renderBlog();
+    }).catch(function (err) { showToast(err.message || 'Save failed', 'error'); });
+  });
+}
+
+/* ══════════════════════════════════════════
    AUTH
    ══════════════════════════════════════════ */
 function isLoggedIn() {
@@ -878,7 +1016,7 @@ function doLogout() {
 function applyRoleUI() {
   var role = getRole();
   var allowed = ['dashboard', 'orders', 'messages', 'subscribers'];
-  if (role === 'owner' || role === 'admin') allowed.push('products', 'promos');
+  if (role === 'owner' || role === 'admin') allowed.push('products', 'promos', 'blog');
   if (role === 'owner') allowed.push('users');
 
   $$('.admin-nav-item[data-view]').forEach(function (item) {
